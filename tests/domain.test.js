@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildStoragePath, normalizeInventoryQuantity } from '../src/domain.js';
+import {
+  buildStoragePath,
+  generateSlotGrid,
+  normalizeInventoryQuantity,
+  validateSlotCode
+} from '../src/domain.js';
 
 test('builds a readable storage path from root to leaf', () => {
   const locations = [
@@ -21,4 +26,18 @@ test('builds a readable storage path from root to leaf', () => {
 test('prevents inventory quantity from going below zero', () => {
   assert.equal(normalizeInventoryQuantity('5', '-2'), 3);
   assert.equal(normalizeInventoryQuantity('5', '-9'), 0);
+});
+
+test('generates Excel-like slot coordinates for freezer boxes', () => {
+  const slots = generateSlotGrid(2, 3);
+
+  assert.deepEqual(slots.map((slot) => slot.code), ['A1', 'A2', 'A3', 'B1', 'B2', 'B3']);
+  assert.deepEqual(slots[4], { row: 2, column: 2, rowLabel: 'B', columnLabel: '2', code: 'B2' });
+});
+
+test('validates slot codes against a box layout', () => {
+  assert.equal(validateSlotCode('B7', 8, 12), 'B7');
+  assert.equal(validateSlotCode('b7', 8, 12), 'B7');
+  assert.equal(validateSlotCode('I1', 8, 12), null);
+  assert.equal(validateSlotCode('A13', 8, 12), null);
 });

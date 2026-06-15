@@ -1,7 +1,9 @@
 const state = {
   entries: [],
   locations: [],
-  inventory: []
+  inventory: [],
+  selectedLocationId: null,
+  selectedSlot: null
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -34,6 +36,15 @@ function renderList(target, items, render) {
 
 function tagsHtml(tags = []) {
   return `<div class="pill-row">${tags.map((tag) => `<span class="pill">${tag}</span>`).join('')}</div>`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
 
 async function loadDashboard() {
@@ -82,13 +93,14 @@ async function loadLocations() {
   $('#location-parent').innerHTML = options;
   $('#inventory-location').innerHTML = '<option value="">未指定</option>' +
     state.locations.map((location) => `<option value="${location.id}">${location.name}</option>`).join('');
-  renderList('#locations-list', state.locations, (location) => `
-    <article class="list-item">
-      <h3>${location.name}</h3>
-      <p>${location.kind}${location.position_code ? ` · ${location.position_code}` : ''}</p>
-      <p>${location.notes}</p>
-    </article>
-  `);
+  $('#location-count').textContent = `${state.locations.length} 个位置`;
+  renderLocationTree();
+  if (!state.selectedLocationId && state.locations.length) {
+    const firstBox = state.locations.find((location) => location.layout_type === 'grid') || state.locations[0];
+    await selectLocation(firstBox.id);
+  } else if (state.selectedLocationId) {
+    await selectLocation(state.selectedLocationId);
+  }
 }
 
 async function loadInventory(q = '') {
@@ -97,10 +109,136 @@ async function loadInventory(q = '') {
     <article class="list-item">
       <h3>${item.name}</h3>
       <p>${item.type} · ${item.identifier || '无编号'} · ${item.quantity} ${item.unit || ''}</p>
-      <p>${item.location_name || '未指定位置'} · ${item.status}</p>
+      <p>${item.location_name || '未指定位置'}${item.slot_code ? ` / ${item.slot_code}` : ''} · ${item.status}</p>
       ${tagsHtml(item.tags)}
     </article>
   `);
+}
+
+function locationDepth(location, byId) {
+  let depth = 0;
+  let current = location;
+  const seen = new Set();
+  while (current?.parent_id && byId.has(current.parent_id) && !seen.has(current.parent_id)) {
+    seen.add(current.parent_id);
+    depth += 1;
+    current = byId.get(current.parent_id);
+  }
+  return depth;
+}
+
+function renderLocationTree() {
+  const byId = new Map(state.locations.map((location) => [location.id, location]));
+  const sorted = [...state.locations].sort((a, b) => {
+    const depthA = locationDepth(a, byId);
+    const depthB = locationDepth(b, byId);
+    return depthA - depthB || a.name.localeCompare(b.name);
+  });
+
+  $('#locations-list').innerHTML = sorted.map((location) => {
+    const depth = locationDepth(location, byId);
+    const icon = location.layout_type === 'grid' ? '▦' : location.kind === 'freezer' ? '▤' : '□';
+    const active = location.id === state.selectedLocationId ? ' active' : '';
+    return `
+      <button class="tree-node${active}" data-location-id="${location.id}" style="--depth:${depth}">
+        <span>${icon}</span>
+        <strong>${escapeHtml(location.name)}</strong>
+        <small>${escapeHtml(location.kind)}${location.layout_type === 'grid' ? ` · ${location.rows}x${location.columns}` : ''}</small>
+      </button>
+    `;
+  }).join('') || '<p class="muted-text">暂无位置</p>';
+
+  $$('.tree-node').forEach((button) => {
+    button.addEventListener('click', () => selectLocation(button.dataset.locationId));
+  });
+}
+
+async function selectLocation(locationId) {
+  state.selectedLocationId = locationId;
+  state.selectedSlot = null;
+  renderLocationTree();
+  const location = state.locations.find((item) => item.id === locationId);
+  if (!location) return;
+
+  $('#selected-location-name').textContent = location.name;
+  $('#selected-location-meta').textContent = `${location.kind}${location.layout_type === 'grid' ? ` · ${location.rows} x ${location.columns}` : ''}`;
+  $('#slot-detail').innerHTML = '<p class="muted-text">点击一个孔位查看样本和历史。</p>';
+
+  if (location.layout_type !== 'grid') {
+    const children = state.locations.filter((item) => item.parent_id === location.id);
+    $('#storage-grid').className = 'storage-grid-empty';
+    $('#storage-grid').innerHTML = children.length
+      ? children.map((child) => `<button class="child-location" data-location-id="${child.id}">${escapeHtml(child.name)}<span>${escapeHtml(child.kind)}</span></button>`).join('')
+      : '这个位置下还没有子位置。';
+    $$('.child-location').forEach((button) => {
+      button.addEventListener('click', () => selectLocation(button.dataset.locationId));
+    });
+    return;
+  }
+
+  const view = await api(`/api/locations/${location.id}/view`);
+  renderStorageGrid(view);
+}
+
+function renderStorageGrid(view) {
+  const grid = $('#storage-grid');
+  grid.className = 'box-grid';
+  grid.style.setProperty('--columns', view.columns);
+  grid.innerHTML = view.slots.map((slot) => `
+    <button class="slot-cell ${slot.state}" data-slot-code="${slot.code}">
+      <span class="slot-code">${slot.code}</span>
+      <strong>${slot.item ? escapeHtml(slot.item.name) : ''}</strong>
+      <small>${slot.item ? `${slot.item.quantity} ${slot.item.unit || ''}` : '空'}</small>
+    </button>
+  `).join('');
+
+  $$('.slot-cell').forEach((button) => {
+    button.addEventListener('click', () => {
+      const slot = view.slots.find((item) => item.code === button.dataset.slotCode);
+      showSlotDetail(slot);
+    });
+  });
+}
+
+async function showSlotDetail(slot) {
+  state.selectedSlot = slot;
+  if (!slot.item) {
+    $('#slot-detail').innerHTML = `
+      <div class="empty-slot">
+        <span class="slot-badge">${slot.code}</span>
+        <h4>空孔位</h4>
+        <p>可在库存表单中选择当前盒子，并填入 ${slot.code} 存入样本。</p>
+        <button id="use-slot-button" class="ghost">填入库存表单</button>
+      </div>
+    `;
+    $('#use-slot-button').addEventListener('click', () => {
+      $('#inventory-location').value = state.selectedLocationId;
+      document.querySelector('#inventory-form [name="slot_code"]').value = slot.code;
+      document.querySelector('[data-tab="inventory"]').click();
+      document.querySelector('#inventory-form [name="name"]').focus();
+    });
+    return;
+  }
+
+  const movements = await api(`/api/inventory/${slot.item.id}/movements`);
+  $('#slot-detail').innerHTML = `
+    <div class="slot-record">
+      <span class="slot-badge">${slot.code}</span>
+      <h4>${escapeHtml(slot.item.name)}</h4>
+      <p>${escapeHtml(slot.item.type)} · ${escapeHtml(slot.item.identifier || '无编号')}</p>
+      <p>${slot.item.quantity} ${escapeHtml(slot.item.unit || '')} · ${escapeHtml(slot.item.status)}</p>
+    </div>
+    <div class="movement-list">
+      ${movements.map((movement) => `
+        <article>
+          <strong>${escapeHtml(movement.action)}</strong>
+          <p>${new Date(movement.created_at).toLocaleString()}</p>
+          <p>${escapeHtml(movement.from_location_name || '')}${movement.from_slot_code ? ` / ${movement.from_slot_code}` : ''} → ${escapeHtml(movement.to_location_name || '')}${movement.to_slot_code ? ` / ${movement.to_slot_code}` : ''}</p>
+          ${movement.note ? `<p>${escapeHtml(movement.note)}</p>` : ''}
+        </article>
+      `).join('') || '<p class="muted-text">暂无历史</p>'}
+    </div>
+  `;
 }
 
 async function refreshAll() {
@@ -120,6 +258,14 @@ function formJson(form) {
 }
 
 function bindForms() {
+  $('#location-kind').addEventListener('change', (event) => {
+    if (event.target.value === 'box') {
+      $('#location-layout').value = 'grid';
+      document.querySelector('#location-form [name="rows"]').value = 8;
+      document.querySelector('#location-form [name="columns"]').value = 12;
+    }
+  });
+
   $('#login-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     try {
@@ -152,6 +298,7 @@ function bindForms() {
     event.preventDefault();
     await api('/api/locations', { method: 'POST', body: JSON.stringify(formJson(event.currentTarget)) });
     event.currentTarget.reset();
+    $('#location-layout').value = 'none';
     await Promise.all([loadLocations(), loadInventory()]);
   });
 

@@ -31,6 +31,47 @@ export function normalizeInventoryQuantity(currentQuantity, deltaQuantity) {
   return Number.isFinite(next) && next > 0 ? next : 0;
 }
 
+export function rowLabelForIndex(index) {
+  let value = index;
+  let label = '';
+  while (value > 0) {
+    value -= 1;
+    label = String.fromCharCode(65 + (value % 26)) + label;
+    value = Math.floor(value / 26);
+  }
+  return label;
+}
+
+export function generateSlotGrid(rows = 8, columns = 12) {
+  const safeRows = Math.max(1, Math.min(Number(rows || 8), 26));
+  const safeColumns = Math.max(1, Math.min(Number(columns || 12), 48));
+  const slots = [];
+
+  for (let row = 1; row <= safeRows; row += 1) {
+    const rowLabel = rowLabelForIndex(row);
+    for (let column = 1; column <= safeColumns; column += 1) {
+      const columnLabel = String(column);
+      slots.push({
+        row,
+        column,
+        rowLabel,
+        columnLabel,
+        code: `${rowLabel}${columnLabel}`
+      });
+    }
+  }
+
+  return slots;
+}
+
+export function validateSlotCode(slotCode, rows = 8, columns = 12) {
+  const normalized = String(slotCode || '').trim().toUpperCase();
+  if (!/^[A-Z]+[0-9]+$/.test(normalized)) return null;
+
+  const valid = new Set(generateSlotGrid(rows, columns).map((slot) => slot.code));
+  return valid.has(normalized) ? normalized : null;
+}
+
 export function slugifyIdPrefix(input) {
   return String(input || 'item')
     .trim()

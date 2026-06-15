@@ -34,6 +34,9 @@ export async function migrate(pool) {
       parent_id UUID REFERENCES storage_locations(id) ON DELETE SET NULL,
       name TEXT NOT NULL,
       kind TEXT NOT NULL DEFAULT 'location',
+      layout_type TEXT NOT NULL DEFAULT 'none',
+      rows INTEGER NOT NULL DEFAULT 0,
+      columns INTEGER NOT NULL DEFAULT 0,
       position_code TEXT NOT NULL DEFAULT '',
       notes TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -46,6 +49,7 @@ export async function migrate(pool) {
       type TEXT NOT NULL DEFAULT 'sample',
       name TEXT NOT NULL,
       identifier TEXT NOT NULL DEFAULT '',
+      slot_code TEXT NOT NULL DEFAULT '',
       quantity NUMERIC NOT NULL DEFAULT 0,
       unit TEXT NOT NULL DEFAULT '',
       expires_on DATE,
@@ -61,6 +65,21 @@ export async function migrate(pool) {
       item_id UUID NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY (entry_id, item_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_movements (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      item_id UUID REFERENCES inventory_items(id) ON DELETE SET NULL,
+      action TEXT NOT NULL,
+      from_location_id UUID REFERENCES storage_locations(id) ON DELETE SET NULL,
+      to_location_id UUID REFERENCES storage_locations(id) ON DELETE SET NULL,
+      from_slot_code TEXT NOT NULL DEFAULT '',
+      to_slot_code TEXT NOT NULL DEFAULT '',
+      quantity_before NUMERIC,
+      quantity_after NUMERIC,
+      note TEXT NOT NULL DEFAULT '',
+      actor TEXT NOT NULL DEFAULT 'admin',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
     CREATE TABLE IF NOT EXISTS attachments (
@@ -100,6 +119,13 @@ export async function migrate(pool) {
     CREATE INDEX IF NOT EXISTS inventory_items_search_idx
       ON inventory_items USING GIN (to_tsvector('simple', name || ' ' || identifier || ' ' || notes));
   `);
+
+  await pool.query(`
+    ALTER TABLE storage_locations ADD COLUMN IF NOT EXISTS layout_type TEXT NOT NULL DEFAULT 'none';
+    ALTER TABLE storage_locations ADD COLUMN IF NOT EXISTS rows INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE storage_locations ADD COLUMN IF NOT EXISTS columns INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS slot_code TEXT NOT NULL DEFAULT '';
+  `);
 }
 
 export async function audit(pool, action, entityType, entityId = '', metadata = {}) {
@@ -117,14 +143,16 @@ export async function listAllForExport(pool) {
     inventory,
     locations,
     attachments,
-    externalLinks
+    externalLinks,
+    movements
   ] = await Promise.all([
     pool.query('SELECT * FROM experiment_entries ORDER BY occurred_at DESC'),
     pool.query('SELECT * FROM events ORDER BY occurred_at DESC'),
     pool.query('SELECT * FROM inventory_items ORDER BY created_at DESC'),
     pool.query('SELECT * FROM storage_locations ORDER BY created_at ASC'),
     pool.query('SELECT * FROM attachments ORDER BY created_at DESC'),
-    pool.query('SELECT * FROM external_links ORDER BY created_at DESC')
+    pool.query('SELECT * FROM external_links ORDER BY created_at DESC'),
+    pool.query('SELECT * FROM inventory_movements ORDER BY created_at DESC')
   ]);
 
   return {
@@ -133,6 +161,7 @@ export async function listAllForExport(pool) {
     inventory: inventory.rows,
     locations: locations.rows,
     attachments: attachments.rows,
-    externalLinks: externalLinks.rows
+    externalLinks: externalLinks.rows,
+    movements: movements.rows
   };
 }

@@ -9,7 +9,8 @@ import cookie from 'cookie';
 import { getConfig } from './config.js';
 import { createPool, migrate, audit, listAllForExport } from './db.js';
 import { exportBackupManifest } from './exporter.js';
-import { normalizeInventoryQuantity } from './domain.js';
+import { normalizeInventoryQuantity, validateSlotCode } from './domain.js';
+import { buildStorageView } from './storage-view.js';
 import { signSession, verifyPassword, verifySession } from './auth.js';
 import { createLoginRateLimiter } from './rate-limit.js';
 
@@ -205,18 +206,31 @@ app.get('/api/locations', requireAuth, async (_req, res) => {
 
 app.post('/api/locations', requireAuth, async (req, res) => {
   const result = await pool.query(
-    `INSERT INTO storage_locations (parent_id, name, kind, position_code, notes)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    `INSERT INTO storage_locations (parent_id, name, kind, layout_type, rows, columns, position_code, notes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
     [
       req.body.parent_id || null,
       String(req.body.name || '').trim(),
       String(req.body.kind || 'location'),
+      String(req.body.layout_type || (req.body.kind === 'box' ? 'grid' : 'none')),
+      Number(req.body.rows || 0),
+      Number(req.body.columns || 0),
       String(req.body.position_code || ''),
       String(req.body.notes || '')
     ]
   );
   await audit(pool, 'create', 'storage_location', result.rows[0].id);
   res.status(201).json(result.rows[0]);
+});
+
+app.get('/api/locations/:id/view', requireAuth, async (req, res) => {
+  const location = await pool.query('SELECT * FROM storage_locations WHERE id = $1', [req.params.id]);
+  if (!location.rowCount) return res.status(404).json({ error: 'Location not found' });
+  const inventory = await pool.query(
+    `SELECT * FROM inventory_items WHERE location_id = $1 ORDER BY slot_code ASC, updated_at DESC`,
+    [req.params.id]
+  );
+  res.json(buildStorageView({ location: location.rows[0], inventory: inventory.rows }));
 });
 
 app.get('/api/inventory', requireAuth, async (req, res) => {
@@ -241,22 +255,46 @@ app.get('/api/inventory', requireAuth, async (req, res) => {
 });
 
 app.post('/api/inventory', requireAuth, async (req, res) => {
+  let slotCode = String(req.body.slot_code || '').trim().toUpperCase();
+  if (req.body.location_id) {
+    const location = await pool.query('SELECT * FROM storage_locations WHERE id = $1', [req.body.location_id]);
+    if (!location.rowCount) return res.status(404).json({ error: 'Location not found' });
+    const target = location.rows[0];
+    if (target.layout_type === 'grid') {
+      slotCode = validateSlotCode(slotCode, target.rows, target.columns);
+      if (!slotCode) return res.status(400).json({ error: 'Invalid slot for selected box layout' });
+    }
+  }
+
   const result = await pool.query(
     `INSERT INTO inventory_items
-      (location_id, type, name, identifier, quantity, unit, expires_on, status, notes, tags)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      (location_id, type, name, identifier, slot_code, quantity, unit, expires_on, status, notes, tags)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING *`,
     [
       req.body.location_id || null,
       String(req.body.type || 'sample'),
       String(req.body.name || '').trim(),
       String(req.body.identifier || ''),
+      slotCode || '',
       Number(req.body.quantity || 0),
       String(req.body.unit || ''),
       req.body.expires_on || null,
       String(req.body.status || 'available'),
       String(req.body.notes || ''),
       cleanTags(req.body.tags)
+    ]
+  );
+  await pool.query(
+    `INSERT INTO inventory_movements
+      (item_id, action, to_location_id, to_slot_code, quantity_after, note)
+     VALUES ($1, 'store', $2, $3, $4, $5)`,
+    [
+      result.rows[0].id,
+      result.rows[0].location_id,
+      result.rows[0].slot_code,
+      result.rows[0].quantity,
+      'Created inventory item'
     ]
   );
   await audit(pool, 'create', 'inventory_item', result.rows[0].id);
@@ -271,8 +309,72 @@ app.post('/api/inventory/:id/adjust', requireAuth, async (req, res) => {
     `UPDATE inventory_items SET quantity = $2, updated_at = now() WHERE id = $1 RETURNING *`,
     [req.params.id, nextQuantity]
   );
+  await pool.query(
+    `INSERT INTO inventory_movements
+      (item_id, action, from_location_id, to_location_id, from_slot_code, to_slot_code, quantity_before, quantity_after, note)
+     SELECT id, 'adjust', location_id, location_id, slot_code, slot_code, $2, $3, $4
+     FROM inventory_items WHERE id = $1`,
+    [req.params.id, existing.rows[0].quantity, nextQuantity, String(req.body.note || '')]
+  );
   await audit(pool, 'adjust_quantity', 'inventory_item', req.params.id, { delta: req.body.delta });
   res.json(result.rows[0]);
+});
+
+app.post('/api/inventory/:id/move', requireAuth, async (req, res) => {
+  const existing = await pool.query('SELECT * FROM inventory_items WHERE id = $1', [req.params.id]);
+  if (!existing.rowCount) return res.status(404).json({ error: 'Inventory item not found' });
+
+  const location = await pool.query('SELECT * FROM storage_locations WHERE id = $1', [req.body.location_id]);
+  if (!location.rowCount) return res.status(404).json({ error: 'Target location not found' });
+
+  const target = location.rows[0];
+  const slotCode = target.layout_type === 'grid'
+    ? validateSlotCode(req.body.slot_code, target.rows, target.columns)
+    : String(req.body.slot_code || '').trim().toUpperCase();
+  if (target.layout_type === 'grid' && !slotCode) {
+    return res.status(400).json({ error: 'Invalid slot for selected box layout' });
+  }
+
+  const result = await pool.query(
+    `UPDATE inventory_items
+     SET location_id = $2, slot_code = $3, updated_at = now()
+     WHERE id = $1 RETURNING *`,
+    [req.params.id, target.id, slotCode || '']
+  );
+
+  await pool.query(
+    `INSERT INTO inventory_movements
+      (item_id, action, from_location_id, to_location_id, from_slot_code, to_slot_code, quantity_before, quantity_after, note)
+     VALUES ($1, 'move', $2, $3, $4, $5, $6, $6, $7)`,
+    [
+      req.params.id,
+      existing.rows[0].location_id,
+      target.id,
+      existing.rows[0].slot_code,
+      slotCode || '',
+      existing.rows[0].quantity,
+      String(req.body.note || '')
+    ]
+  );
+  await audit(pool, 'move', 'inventory_item', req.params.id, {
+    from_location_id: existing.rows[0].location_id,
+    to_location_id: target.id,
+    to_slot_code: slotCode || ''
+  });
+  res.json(result.rows[0]);
+});
+
+app.get('/api/inventory/:id/movements', requireAuth, async (req, res) => {
+  const result = await pool.query(
+    `SELECT m.*, fl.name AS from_location_name, tl.name AS to_location_name
+     FROM inventory_movements m
+     LEFT JOIN storage_locations fl ON fl.id = m.from_location_id
+     LEFT JOIN storage_locations tl ON tl.id = m.to_location_id
+     WHERE m.item_id = $1
+     ORDER BY m.created_at DESC`,
+    [req.params.id]
+  );
+  res.json(result.rows);
 });
 
 app.post('/api/entries/:entryId/inventory/:itemId', requireAuth, async (req, res) => {

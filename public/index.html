@@ -125,6 +125,7 @@
               </div>
               <div class="form-row">
                 <label>存放位置<select name="location_id" id="inventory-location"></select></label>
+                <label>孔位<input name="slot_code" placeholder="例如：B7" /></label>
                 <label>过期日期<input name="expires_on" type="date" /></label>
               </div>
               <label>备注<textarea name="notes" rows="3"></textarea></label>
@@ -142,12 +143,53 @@
               <div class="form-row">
                 <label>名称<input name="name" required placeholder="例如：-80 Freezer 1" /></label>
                 <label>上级位置<select name="parent_id" id="location-parent"></select></label>
-                <label>类型<input name="kind" placeholder="room/freezer/rack/box/well" /></label>
+                <label>类型
+                  <select name="kind" id="location-kind">
+                    <option value="location">普通位置</option>
+                    <option value="room">房间</option>
+                    <option value="freezer">冰箱</option>
+                    <option value="rack">层架</option>
+                    <option value="box">存放盒</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-row">
+                <label>布局
+                  <select name="layout_type" id="location-layout">
+                    <option value="none">无网格</option>
+                    <option value="grid">孔位网格</option>
+                  </select>
+                </label>
+                <label>行数<input name="rows" type="number" min="1" max="26" value="8" /></label>
+                <label>列数<input name="columns" type="number" min="1" max="48" value="12" /></label>
               </div>
               <label>说明<textarea name="notes" rows="3"></textarea></label>
               <button type="submit">添加位置</button>
             </form>
-            <div id="locations-list" class="list"></div>
+            <div class="storage-workspace">
+              <aside class="storage-tree-panel">
+                <div class="panel-heading">
+                  <h3>位置分布</h3>
+                  <span id="location-count" class="muted-text">0 个位置</span>
+                </div>
+                <div id="locations-list" class="storage-tree"></div>
+              </aside>
+              <section class="storage-map-panel">
+                <div class="panel-heading">
+                  <div>
+                    <h3 id="selected-location-name">选择一个位置</h3>
+                    <p id="selected-location-meta" class="muted-text">冰箱、层架和盒子会在这里展开。</p>
+                  </div>
+                </div>
+                <div id="storage-grid" class="storage-grid-empty">选择左侧的存放盒查看孔位。</div>
+              </section>
+              <aside class="storage-detail-panel">
+                <div class="panel-heading">
+                  <h3>孔位详情</h3>
+                </div>
+                <div id="slot-detail" class="slot-detail muted-text">点击一个孔位查看样本和历史。</div>
+              </aside>
+            </div>
           </section>
 
           <section class="tab-panel hidden" data-panel="files">
