@@ -123,6 +123,7 @@ function renderExperiments() {
         <strong>${escapeHtml(experiment.title)}</strong>
         <span>${escapeHtml(experiment.status)} · ${experiment.entry_count || 0} 条记录${lastEntry}</span>
         ${experiment.objective ? `<small>${escapeHtml(experiment.objective.slice(0, 120))}</small>` : ''}
+        <em>${active ? '正在记录' : '进入记录'}</em>
       </button>
     `;
   });

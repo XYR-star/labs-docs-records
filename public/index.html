@@ -78,28 +78,6 @@
 
           <section class="tab-panel hidden" data-panel="entries">
             <div class="entries-workspace">
-              <aside class="experiments-panel">
-                <form id="experiment-form" class="editor-form compact-form">
-                  <label>实验名称<input name="title" required placeholder="例如：IL-2 mRNA 转染优化" /></label>
-                  <label>目标/说明<textarea name="objective" rows="3" placeholder="实验目的、样本来源、总体设计"></textarea></label>
-                  <div class="form-row compact-row">
-                    <label>状态
-                      <select name="status">
-                        <option value="active">进行中</option>
-                        <option value="paused">暂停</option>
-                        <option value="completed">完成</option>
-                      </select>
-                    </label>
-                    <label>标签<input name="tags" placeholder="cell, PCR" /></label>
-                  </div>
-                  <button type="submit">新建实验</button>
-                </form>
-                <div class="toolbar">
-                  <input id="experiment-search" placeholder="搜索实验" />
-                  <button id="experiment-search-button" class="ghost">搜索</button>
-                </div>
-                <div id="experiments-list" class="list"></div>
-              </aside>
               <section class="entry-compose-panel">
                 <form id="entry-form" class="editor-form">
                   <div class="form-row">
@@ -128,6 +106,28 @@
                 </div>
                 <div id="entries-list" class="list"></div>
               </section>
+              <aside class="experiments-panel">
+                <form id="experiment-form" class="editor-form compact-form">
+                  <label>实验名称<input name="title" required placeholder="例如：IL-2 mRNA 转染优化" /></label>
+                  <label>目标/说明<textarea name="objective" rows="3" placeholder="实验目的、样本来源、总体设计"></textarea></label>
+                  <div class="form-row compact-row">
+                    <label>状态
+                      <select name="status">
+                        <option value="active">进行中</option>
+                        <option value="paused">暂停</option>
+                        <option value="completed">完成</option>
+                      </select>
+                    </label>
+                    <label>标签<input name="tags" placeholder="cell, PCR" /></label>
+                  </div>
+                  <button type="submit">新建实验</button>
+                </form>
+                <div class="toolbar">
+                  <input id="experiment-search" placeholder="搜索实验" />
+                  <button id="experiment-search-button" class="ghost">搜索</button>
+                </div>
+                <div id="experiments-list" class="list"></div>
+              </aside>
             </div>
           </section>
 

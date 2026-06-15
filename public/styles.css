@@ -213,7 +213,7 @@ textarea { resize: vertical; }
 }
 .entries-workspace {
   display: grid;
-  grid-template-columns: minmax(280px, 0.85fr) minmax(420px, 1.6fr);
+  grid-template-columns: minmax(460px, 1.7fr) minmax(280px, 0.85fr);
   gap: 0.75rem;
   align-items: start;
 }
@@ -235,15 +235,25 @@ textarea { resize: vertical; }
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.85rem;
+  min-height: 74px;
 }
 .experiment-card:hover,
 .experiment-card.active {
   background: var(--soft);
   border-color: #bad5df;
 }
+.experiment-card.active {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
 .experiment-card span,
 .experiment-card small {
   color: var(--muted);
+}
+.experiment-card em {
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 700;
 }
 .template-fields {
   display: grid;
