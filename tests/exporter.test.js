@@ -12,6 +12,7 @@ test('writes backup manifest JSON into the exports directory', async () => {
   try {
     const result = await exportBackupManifest({
       exportsDir: temp,
+      experiments: [{ id: 'exp-1', title: 'mRNA transfection' }],
       records: [{ id: 'entry-1', title: 'PCR setup' }],
       inventory: [{ id: 'item-1', name: 'Taq polymerase' }],
       locations: [{ id: 'loc-1', name: 'Freezer' }],
@@ -24,6 +25,7 @@ test('writes backup manifest JSON into the exports directory', async () => {
 
     const parsed = JSON.parse(await readFile(result.filepath, 'utf8'));
     assert.equal(parsed.schema, 'labs-eln-backup-v1');
+    assert.equal(parsed.experiments[0].title, 'mRNA transfection');
     assert.equal(parsed.records[0].title, 'PCR setup');
     assert.equal(parsed.inventory[0].name, 'Taq polymerase');
     assert.equal(parsed.attachments[0].original_name, 'gel.png');

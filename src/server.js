@@ -20,6 +20,7 @@ import { exportBackupManifest } from './exporter.js';
 import { normalizeInventoryQuantity, validateSlotCode } from './domain.js';
 import { buildStorageView } from './storage-view.js';
 import { createRecordingState } from './recording.js';
+import { getExperimentTemplates, normalizeTemplateData } from './experiment-templates.js';
 import { signSession, verifyPassword, verifySession } from './auth.js';
 import { createLoginRateLimiter } from './rate-limit.js';
 
@@ -123,7 +124,8 @@ app.post('/api/logout', requireAuth, (_req, res) => {
 });
 
 app.get('/api/dashboard', requireAuth, async (_req, res) => {
-  const [entries, events, inventory, lowStock] = await Promise.all([
+  const [experiments, entries, events, inventory, lowStock] = await Promise.all([
+    pool.query('SELECT count(*)::int AS count FROM experiments'),
     pool.query('SELECT count(*)::int AS count FROM experiment_entries'),
     pool.query('SELECT count(*)::int AS count FROM events'),
     pool.query('SELECT count(*)::int AS count FROM inventory_items'),
@@ -131,6 +133,7 @@ app.get('/api/dashboard', requireAuth, async (_req, res) => {
   ]);
 
   res.json({
+    experiments: experiments.rows[0].count,
     entries: entries.rows[0].count,
     events: events.rows[0].count,
     inventory: inventory.rows[0].count,
@@ -158,57 +161,150 @@ app.get('/api/recording/events', requireAuth, async (_req, res) => {
   res.json(result.rows);
 });
 
-app.get('/api/entries', requireAuth, async (req, res) => {
+app.get('/api/experiment-templates', requireAuth, async (_req, res) => {
+  res.json(getExperimentTemplates());
+});
+
+app.get('/api/experiments', requireAuth, async (req, res) => {
   const q = String(req.query.q || '').trim();
   const result = q
     ? await pool.query(
-        `SELECT * FROM experiment_entries
-         WHERE to_tsvector('simple', title || ' ' || body) @@ plainto_tsquery('simple', $1)
-         ORDER BY occurred_at DESC LIMIT 100`,
+        `SELECT e.*, count(en.id)::int AS entry_count, max(en.occurred_at) AS last_entry_at
+         FROM experiments e
+         LEFT JOIN experiment_entries en ON en.experiment_id = e.id
+         WHERE to_tsvector('simple', e.title || ' ' || e.objective) @@ plainto_tsquery('simple', $1)
+         GROUP BY e.id
+         ORDER BY e.updated_at DESC LIMIT 100`,
         [q]
       )
-    : await pool.query('SELECT * FROM experiment_entries ORDER BY occurred_at DESC LIMIT 100');
+    : await pool.query(
+        `SELECT e.*, count(en.id)::int AS entry_count, max(en.occurred_at) AS last_entry_at
+         FROM experiments e
+         LEFT JOIN experiment_entries en ON en.experiment_id = e.id
+         GROUP BY e.id
+         ORDER BY e.updated_at DESC LIMIT 100`
+      );
+  res.json(result.rows);
+});
+
+app.post('/api/experiments', requireAuth, async (req, res) => {
+  const result = await pool.query(
+    `INSERT INTO experiments (title, objective, status, tags)
+     VALUES ($1, $2, $3, $4)
+     RETURNING *`,
+    [
+      String(req.body.title || '').trim(),
+      String(req.body.objective || ''),
+      String(req.body.status || 'active'),
+      cleanTags(req.body.tags)
+    ]
+  );
+  await audit(pool, 'create', 'experiment', result.rows[0].id);
+  await recordEvent(pool, 'experiment.create', 'experiment', result.rows[0].id, `新建实验：${result.rows[0].title}`, {
+    status: result.rows[0].status
+  });
+  res.status(201).json(result.rows[0]);
+});
+
+app.put('/api/experiments/:id', requireAuth, async (req, res) => {
+  const result = await pool.query(
+    `UPDATE experiments
+     SET title = $2, objective = $3, status = $4, tags = $5, updated_at = now()
+     WHERE id = $1 RETURNING *`,
+    [
+      req.params.id,
+      String(req.body.title || '').trim(),
+      String(req.body.objective || ''),
+      String(req.body.status || 'active'),
+      cleanTags(req.body.tags)
+    ]
+  );
+  if (!result.rowCount) return res.status(404).json({ error: 'Experiment not found' });
+  await audit(pool, 'update', 'experiment', req.params.id);
+  await recordEvent(pool, 'experiment.edit', 'experiment', req.params.id, `编辑实验：${result.rows[0].title}`, {
+    status: result.rows[0].status
+  });
+  res.json(result.rows[0]);
+});
+
+app.get('/api/entries', requireAuth, async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const experimentId = String(req.query.experiment_id || '').trim();
+  const result = q
+    ? await pool.query(
+        `SELECT en.*, e.title AS experiment_title
+         FROM experiment_entries en
+         LEFT JOIN experiments e ON e.id = en.experiment_id
+         WHERE to_tsvector('simple', en.title || ' ' || en.body) @@ plainto_tsquery('simple', $1)
+           AND ($2::uuid IS NULL OR en.experiment_id = $2::uuid)
+         ORDER BY occurred_at DESC LIMIT 100`,
+        [q, experimentId || null]
+      )
+    : await pool.query(
+        `SELECT en.*, e.title AS experiment_title
+         FROM experiment_entries en
+         LEFT JOIN experiments e ON e.id = en.experiment_id
+         WHERE ($1::uuid IS NULL OR en.experiment_id = $1::uuid)
+         ORDER BY en.occurred_at DESC LIMIT 100`,
+        [experimentId || null]
+      )
   res.json(result.rows);
 });
 
 app.post('/api/entries', requireAuth, async (req, res) => {
+  const templateKey = String(req.body.template_key || 'blank');
+  const templateData = normalizeTemplateData(templateKey, req.body.template_data || {});
   const result = await pool.query(
-    `INSERT INTO experiment_entries (title, body, status, occurred_at, tags)
-     VALUES ($1, $2, $3, COALESCE($4::timestamptz, now()), $5)
+    `INSERT INTO experiment_entries (experiment_id, title, body, status, template_key, template_data, occurred_at, tags)
+     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::timestamptz, now()), $8)
      RETURNING *`,
     [
+      req.body.experiment_id || null,
       String(req.body.title || '').trim(),
       String(req.body.body || ''),
       String(req.body.status || 'active'),
+      templateKey,
+      templateData,
       req.body.occurred_at || null,
       cleanTags(req.body.tags)
     ]
   );
   await audit(pool, 'create', 'experiment_entry', result.rows[0].id);
   await recordEvent(pool, 'entry.create', 'experiment_entry', result.rows[0].id, `保存实验记录：${result.rows[0].title}`, {
+    experiment_id: result.rows[0].experiment_id,
     title: result.rows[0].title,
+    template_key: result.rows[0].template_key,
     status: result.rows[0].status
   });
   res.status(201).json(result.rows[0]);
 });
 
 app.put('/api/entries/:id', requireAuth, async (req, res) => {
+  const templateKey = String(req.body.template_key || 'blank');
+  const templateData = normalizeTemplateData(templateKey, req.body.template_data || {});
   const result = await pool.query(
     `UPDATE experiment_entries
-     SET title = $2, body = $3, status = $4, tags = $5, updated_at = now()
+     SET experiment_id = $2, title = $3, body = $4, status = $5, template_key = $6,
+         template_data = $7, occurred_at = COALESCE($8::timestamptz, occurred_at), tags = $9, updated_at = now()
      WHERE id = $1 RETURNING *`,
     [
       req.params.id,
+      req.body.experiment_id || null,
       String(req.body.title || '').trim(),
       String(req.body.body || ''),
       String(req.body.status || 'active'),
+      templateKey,
+      templateData,
+      req.body.occurred_at || null,
       cleanTags(req.body.tags)
     ]
   );
   if (!result.rowCount) return res.status(404).json({ error: 'Entry not found' });
   await audit(pool, 'update', 'experiment_entry', req.params.id);
   await recordEvent(pool, 'entry.edit', 'experiment_entry', req.params.id, `编辑实验记录：${result.rows[0].title}`, {
+    experiment_id: result.rows[0].experiment_id,
     title: result.rows[0].title,
+    template_key: result.rows[0].template_key,
     status: result.rows[0].status
   });
   res.json(result.rows[0]);

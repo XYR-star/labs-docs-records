@@ -8,11 +8,24 @@ export function createPool(databaseUrl) {
 
 export async function migrate(pool) {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS experiments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title TEXT NOT NULL,
+      objective TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'active',
+      tags TEXT[] NOT NULL DEFAULT '{}',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     CREATE TABLE IF NOT EXISTS experiment_entries (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      experiment_id UUID REFERENCES experiments(id) ON DELETE SET NULL,
       title TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'active',
       body TEXT NOT NULL DEFAULT '',
+      template_key TEXT NOT NULL DEFAULT 'blank',
+      template_data JSONB NOT NULL DEFAULT '{}',
       occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       tags TEXT[] NOT NULL DEFAULT '{}',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -142,6 +155,9 @@ export async function migrate(pool) {
     ALTER TABLE storage_locations ADD COLUMN IF NOT EXISTS layout_type TEXT NOT NULL DEFAULT 'none';
     ALTER TABLE storage_locations ADD COLUMN IF NOT EXISTS rows INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE storage_locations ADD COLUMN IF NOT EXISTS columns INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE experiment_entries ADD COLUMN IF NOT EXISTS experiment_id UUID REFERENCES experiments(id) ON DELETE SET NULL;
+    ALTER TABLE experiment_entries ADD COLUMN IF NOT EXISTS template_key TEXT NOT NULL DEFAULT 'blank';
+    ALTER TABLE experiment_entries ADD COLUMN IF NOT EXISTS template_data JSONB NOT NULL DEFAULT '{}';
     ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS slot_code TEXT NOT NULL DEFAULT '';
     ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS stored_on DATE;
   `);
@@ -190,6 +206,7 @@ export async function recordEvent(pool, action, entityType, entityId = '', summa
 export async function listAllForExport(pool) {
   const [
     records,
+    experiments,
     events,
     inventory,
     locations,
@@ -199,6 +216,7 @@ export async function listAllForExport(pool) {
     recordingEvents
   ] = await Promise.all([
     pool.query('SELECT * FROM experiment_entries ORDER BY occurred_at DESC'),
+    pool.query('SELECT * FROM experiments ORDER BY updated_at DESC'),
     pool.query('SELECT * FROM events ORDER BY occurred_at DESC'),
     pool.query('SELECT * FROM inventory_items ORDER BY created_at DESC'),
     pool.query('SELECT * FROM storage_locations ORDER BY created_at ASC'),
@@ -210,6 +228,7 @@ export async function listAllForExport(pool) {
 
   return {
     records: records.rows,
+    experiments: experiments.rows,
     events: events.rows,
     inventory: inventory.rows,
     locations: locations.rows,

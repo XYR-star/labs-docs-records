@@ -1,7 +1,10 @@
 const state = {
+  experiments: [],
   entries: [],
+  templates: [],
   locations: [],
   inventory: [],
+  selectedExperimentId: '',
   selectedLocationId: null,
   selectedSlot: null,
   editingLocationId: null,
@@ -82,6 +85,7 @@ function escapeHtml(value) {
 
 async function loadDashboard() {
   const data = await api('/api/dashboard');
+  $('#metric-experiments').textContent = data.experiments;
   $('#metric-entries').textContent = data.entries;
   $('#metric-events').textContent = data.events;
   $('#metric-inventory').textContent = data.inventory;
@@ -91,6 +95,46 @@ async function loadDashboard() {
       <span class="pill">${item.status}</span>
     </article>
   `);
+}
+
+async function loadTemplates() {
+  state.templates = await api('/api/experiment-templates');
+  const select = $('#entry-template');
+  select.innerHTML = state.templates
+    .map((template) => optionHtml(template.key, template.label, select.value || 'blank'))
+    .join('');
+  renderTemplateFields();
+}
+
+async function loadExperiments(q = '') {
+  state.experiments = await api(`/api/experiments${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+  const selectedValue = state.selectedExperimentId || $('#entry-experiment')?.value || '';
+  $('#entry-experiment').innerHTML = '<option value="">不关联实验</option>' +
+    state.experiments.map((experiment) => optionHtml(experiment.id, experiment.title, selectedValue)).join('');
+  renderExperiments();
+}
+
+function renderExperiments() {
+  renderList('#experiments-list', state.experiments, (experiment) => {
+    const active = experiment.id === state.selectedExperimentId ? ' active' : '';
+    const lastEntry = experiment.last_entry_at ? ` · 最近 ${new Date(experiment.last_entry_at).toLocaleDateString()}` : '';
+    return `
+      <button class="experiment-card${active}" data-experiment-id="${experiment.id}">
+        <strong>${escapeHtml(experiment.title)}</strong>
+        <span>${escapeHtml(experiment.status)} · ${experiment.entry_count || 0} 条记录${lastEntry}</span>
+        ${experiment.objective ? `<small>${escapeHtml(experiment.objective.slice(0, 120))}</small>` : ''}
+      </button>
+    `;
+  });
+
+  $$('.experiment-card').forEach((button) => {
+    button.addEventListener('click', async () => {
+      state.selectedExperimentId = button.dataset.experimentId;
+      $('#entry-experiment').value = state.selectedExperimentId;
+      renderExperiments();
+      await loadEntries($('#entry-search').value);
+    });
+  });
 }
 
 async function loadRecording() {
@@ -131,11 +175,15 @@ function renderRecording() {
 }
 
 async function loadEntries(q = '') {
-  state.entries = await api(`/api/entries${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (state.selectedExperimentId) params.set('experiment_id', state.selectedExperimentId);
+  state.entries = await api(`/api/entries${params.toString() ? `?${params}` : ''}`);
   renderList('#entries-list', state.entries, (entry) => `
     <article class="list-item">
       <h3>${entry.title}</h3>
-      <p>${new Date(entry.occurred_at).toLocaleString()} · ${entry.status}</p>
+      <p>${entry.experiment_title || '未关联实验'} · ${new Date(entry.occurred_at).toLocaleString()} · ${entry.status}</p>
+      ${entry.template_key && entry.template_key !== 'blank' ? `<p>${templateLabel(entry.template_key)} · ${templateDataSummary(entry.template_data)}</p>` : ''}
       <p>${entry.body.slice(0, 220)}</p>
       ${tagsHtml(entry.tags)}
     </article>
@@ -143,6 +191,38 @@ async function loadEntries(q = '') {
   const select = $('#attachment-entry');
   select.innerHTML = '<option value="">不关联记录</option>' +
     state.entries.map((entry) => `<option value="${entry.id}">${entry.title}</option>`).join('');
+}
+
+function templateLabel(key) {
+  return state.templates.find((template) => template.key === key)?.label || key;
+}
+
+function templateDataSummary(data = {}) {
+  const values = Object.entries(data || {})
+    .filter(([, value]) => value)
+    .slice(0, 4)
+    .map(([key, value]) => `${key}: ${value}`);
+  return values.length ? values.map(escapeHtml).join(' · ') : '参数待补';
+}
+
+function renderTemplateFields() {
+  const template = state.templates.find((item) => item.key === $('#entry-template').value);
+  const fields = template?.fields || [];
+  $('#template-fields').innerHTML = fields.length
+    ? `
+      <div class="template-heading">
+        <strong>${escapeHtml(template.label)} 参数</strong>
+        <span>${escapeHtml(template.description || '')}</span>
+      </div>
+      <div class="template-grid">
+        ${fields.map((field) => `
+          <label>${escapeHtml(field.label)}
+            <input name="template_data.${escapeHtml(field.name)}" placeholder="${escapeHtml(field.placeholder || '')}" />
+          </label>
+        `).join('')}
+      </div>
+    `
+    : '<p class="muted-text">空白模板：直接填写正文即可。</p>';
 }
 
 async function loadEvents() {
@@ -433,6 +513,7 @@ async function showSlotDetail(slot) {
 }
 
 async function refreshAll() {
+  await Promise.all([loadTemplates(), loadExperiments()]);
   await Promise.all([
     loadDashboard(),
     loadRecording(),
@@ -445,6 +526,14 @@ async function refreshAll() {
 
 function formJson(form) {
   const data = Object.fromEntries(new FormData(form));
+  const templateData = {};
+  Object.entries(data).forEach(([key, value]) => {
+    if (!key.startsWith('template_data.')) return;
+    const fieldName = key.slice('template_data.'.length);
+    templateData[fieldName] = value;
+    delete data[key];
+  });
+  if (Object.keys(templateData).length) data.template_data = templateData;
   if (data.tags) data.tags = data.tags.split(',').map((tag) => tag.trim()).filter(Boolean);
   return data;
 }
@@ -517,11 +606,33 @@ function bindForms() {
     await Promise.all([loadDashboard(), loadRecording(), loadInventory(), selectLocation(state.selectedLocationId)]);
   });
 
+  $('#experiment-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const created = await api('/api/experiments', { method: 'POST', body: JSON.stringify(formJson(event.currentTarget)) });
+    event.currentTarget.reset();
+    state.selectedExperimentId = created.id;
+    await Promise.all([loadDashboard(), loadRecording(), loadExperiments()]);
+    $('#entry-experiment').value = created.id;
+    await loadEntries();
+  });
+
+  $('#entry-template').addEventListener('change', renderTemplateFields);
+  $('#entry-experiment').addEventListener('change', async (event) => {
+    state.selectedExperimentId = event.target.value;
+    renderExperiments();
+    await loadEntries($('#entry-search').value);
+  });
+
   $('#entry-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    await api('/api/entries', { method: 'POST', body: JSON.stringify(formJson(event.currentTarget)) });
+    const data = formJson(event.currentTarget);
+    state.selectedExperimentId = data.experiment_id || state.selectedExperimentId;
+    await api('/api/entries', { method: 'POST', body: JSON.stringify(data) });
     event.currentTarget.reset();
-    await Promise.all([loadDashboard(), loadRecording(), loadEntries()]);
+    $('#entry-experiment').value = state.selectedExperimentId || '';
+    $('#entry-template').value = 'blank';
+    renderTemplateFields();
+    await Promise.all([loadDashboard(), loadRecording(), loadExperiments(), loadEntries()]);
   });
 
   $('#event-form').addEventListener('submit', async (event) => {
@@ -590,6 +701,7 @@ function bindNavigation() {
     });
   });
 
+  $('#experiment-search-button').addEventListener('click', () => loadExperiments($('#experiment-search').value));
   $('#entry-search-button').addEventListener('click', () => loadEntries($('#entry-search').value));
   $('#inventory-search-button').addEventListener('click', () => loadInventory($('#inventory-search').value));
   $('#recording-button').addEventListener('click', async () => {

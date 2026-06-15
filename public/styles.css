@@ -141,7 +141,7 @@ nav {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.75rem;
 }
 .metric-grid article, .section-block, .editor-form, .list-item {
@@ -210,6 +210,61 @@ textarea { resize: vertical; }
 .compact .list-item {
   grid-template-columns: 1fr auto;
   align-items: center;
+}
+.entries-workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(420px, 1.6fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+.experiments-panel,
+.entry-compose-panel {
+  min-width: 0;
+}
+.compact-form {
+  margin-top: 0;
+}
+.experiment-card {
+  width: 100%;
+  display: grid;
+  gap: 0.25rem;
+  justify-items: start;
+  text-align: left;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.85rem;
+}
+.experiment-card:hover,
+.experiment-card.active {
+  background: var(--soft);
+  border-color: #bad5df;
+}
+.experiment-card span,
+.experiment-card small {
+  color: var(--muted);
+}
+.template-fields {
+  display: grid;
+  gap: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.8rem;
+  background: #f8fafb;
+}
+.template-heading {
+  display: grid;
+  gap: 0.2rem;
+}
+.template-heading span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
 }
 .pill-row {
   display: flex;
@@ -525,7 +580,7 @@ textarea { resize: vertical; }
   }
   .nav-button { justify-content: center; }
   .topbar { align-items: flex-start; flex-direction: column; }
-  .metric-grid, .form-row { grid-template-columns: 1fr; }
+  .metric-grid, .form-row, .entries-workspace, .template-grid { grid-template-columns: 1fr; }
   .main { padding: 0.85rem; }
   .storage-workspace {
     grid-template-columns: 1fr;

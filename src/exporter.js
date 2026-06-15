@@ -4,6 +4,7 @@ import path from 'node:path';
 export async function exportBackupManifest({
   exportsDir,
   records = [],
+  experiments = [],
   events = [],
   inventory = [],
   locations = [],
@@ -20,6 +21,7 @@ export async function exportBackupManifest({
   const payload = {
     schema: 'labs-eln-backup-v1',
     exported_at: new Date().toISOString(),
+    experiments,
     records,
     events,
     inventory,
