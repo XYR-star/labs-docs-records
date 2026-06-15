@@ -1,0 +1,9 @@
+{
+  "name": "Labs ELN",
+  "short_name": "Labs",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f7f4",
+  "theme_color": "#1f6f63",
+  "icons": []
+}

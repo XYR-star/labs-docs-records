@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: labs-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: labs
+      POSTGRES_PASSWORD: change-this-postgres-password
+      POSTGRES_DB: labs
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - /www/labs-data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U labs -d labs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

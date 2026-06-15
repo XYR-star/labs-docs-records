@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1f6f63" />
+    <title>Labs ELN</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <section class="login" data-view="login">
+        <div class="login-panel">
+          <p class="eyebrow">labs.heyrickishere.com</p>
+          <h1>实验记录与库存</h1>
+          <form id="login-form">
+            <label>
+              管理员密码
+              <input name="password" type="password" autocomplete="current-password" required />
+            </label>
+            <button type="submit">登录</button>
+            <p class="form-message" id="login-message"></p>
+          </form>
+        </div>
+      </section>
+
+      <section class="shell hidden" data-view="shell">
+        <aside class="sidebar">
+          <div>
+            <p class="eyebrow">Labs ELN</p>
+            <h2>分子生物实验台账</h2>
+          </div>
+          <nav>
+            <button class="nav-button active" data-tab="dashboard">概览</button>
+            <button class="nav-button" data-tab="entries">记录</button>
+            <button class="nav-button" data-tab="events">事件</button>
+            <button class="nav-button" data-tab="inventory">库存</button>
+            <button class="nav-button" data-tab="locations">存放</button>
+            <button class="nav-button" data-tab="files">附件</button>
+          </nav>
+          <button id="logout-button" class="ghost">退出</button>
+        </aside>
+
+        <main class="main">
+          <header class="topbar">
+            <div>
+              <p class="eyebrow">本地数据盘</p>
+              <h1 id="page-title">概览</h1>
+            </div>
+            <div class="actions">
+              <button id="export-button">导出 JSON</button>
+              <a class="button ghost" href="/api/export/inventory.csv">库存 CSV</a>
+            </div>
+          </header>
+
+          <section class="tab-panel" data-panel="dashboard">
+            <div class="metric-grid">
+              <article><span id="metric-entries">0</span><p>实验记录</p></article>
+              <article><span id="metric-events">0</span><p>事件</p></article>
+              <article><span id="metric-inventory">0</span><p>库存条目</p></article>
+            </div>
+            <div class="section-block">
+              <h3>低库存 / 需关注</h3>
+              <div id="low-stock-list" class="list compact"></div>
+            </div>
+          </section>
+
+          <section class="tab-panel hidden" data-panel="entries">
+            <form id="entry-form" class="editor-form">
+              <div class="form-row">
+                <label>标题<input name="title" required placeholder="例如：PCR 条件优化 2026-06-15" /></label>
+                <label>标签<input name="tags" placeholder="PCR, gel, plasmid" /></label>
+              </div>
+              <label>记录正文<textarea name="body" rows="8" placeholder="步骤、观察、表格 Markdown、图片说明..."></textarea></label>
+              <button type="submit">保存记录</button>
+            </form>
+            <div class="toolbar">
+              <input id="entry-search" placeholder="搜索实验记录" />
+              <button id="entry-search-button" class="ghost">搜索</button>
+            </div>
+            <div id="entries-list" class="list"></div>
+          </section>
+
+          <section class="tab-panel hidden" data-panel="events">
+            <form id="event-form" class="editor-form">
+              <div class="form-row">
+                <label>事件标题<input name="title" required placeholder="例如：更换抗体批次" /></label>
+                <label>类型
+                  <select name="kind">
+                    <option value="note">观察</option>
+                    <option value="task">待办</option>
+                    <option value="sample_change">样本变更</option>
+                    <option value="incident">异常</option>
+                  </select>
+                </label>
+              </div>
+              <label>说明<textarea name="body" rows="4"></textarea></label>
+              <button type="submit">添加事件</button>
+            </form>
+            <div id="events-list" class="list"></div>
+          </section>
+
+          <section class="tab-panel hidden" data-panel="inventory">
+            <form id="inventory-form" class="editor-form">
+              <div class="form-row">
+                <label>名称<input name="name" required placeholder="例如：DH5α 感受态细胞" /></label>
+                <label>类型
+                  <select name="type">
+                    <option value="sample">样本</option>
+                    <option value="reagent">试剂</option>
+                    <option value="consumable">耗材</option>
+                    <option value="plasmid">质粒</option>
+                    <option value="cell_line">细胞系</option>
+                    <option value="antibody">抗体</option>
+                    <option value="equipment">设备</option>
+                    <option value="other">其他</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-row">
+                <label>编号<input name="identifier" placeholder="批号、质粒编号、盒位编号" /></label>
+                <label>数量<input name="quantity" type="number" step="0.01" value="1" /></label>
+                <label>单位<input name="unit" placeholder="tube, ul, box" /></label>
+              </div>
+              <div class="form-row">
+                <label>存放位置<select name="location_id" id="inventory-location"></select></label>
+                <label>过期日期<input name="expires_on" type="date" /></label>
+              </div>
+              <label>备注<textarea name="notes" rows="3"></textarea></label>
+              <button type="submit">保存库存</button>
+            </form>
+            <div class="toolbar">
+              <input id="inventory-search" placeholder="搜索库存" />
+              <button id="inventory-search-button" class="ghost">搜索</button>
+            </div>
+            <div id="inventory-list" class="list"></div>
+          </section>
+
+          <section class="tab-panel hidden" data-panel="locations">
+            <form id="location-form" class="editor-form">
+              <div class="form-row">
+                <label>名称<input name="name" required placeholder="例如：-80 Freezer 1" /></label>
+                <label>上级位置<select name="parent_id" id="location-parent"></select></label>
+                <label>类型<input name="kind" placeholder="room/freezer/rack/box/well" /></label>
+              </div>
+              <label>说明<textarea name="notes" rows="3"></textarea></label>
+              <button type="submit">添加位置</button>
+            </form>
+            <div id="locations-list" class="list"></div>
+          </section>
+
+          <section class="tab-panel hidden" data-panel="files">
+            <form id="attachment-form" class="editor-form" enctype="multipart/form-data">
+              <div class="form-row">
+                <label>关联记录<select name="entry_id" id="attachment-entry"></select></label>
+                <label>文件<input name="file" type="file" required /></label>
+              </div>
+              <button type="submit">上传附件</button>
+            </form>
+            <form id="external-link-form" class="editor-form">
+              <div class="form-row">
+                <label>标签<input name="label" required placeholder="OneDrive 原始数据" /></label>
+                <label>链接<input name="url" type="url" required placeholder="https://..." /></label>
+                <label>来源
+                  <select name="provider">
+                    <option value="onedrive">OneDrive</option>
+                    <option value="google_drive">Google Drive</option>
+                    <option value="link">其他链接</option>
+                  </select>
+                </label>
+              </div>
+              <button type="submit">保存外链</button>
+            </form>
+            <div id="files-message" class="form-message"></div>
+          </section>
+        </main>
+      </section>
+    </div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

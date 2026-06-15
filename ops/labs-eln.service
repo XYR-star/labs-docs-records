@@ -1,0 +1,17 @@
+[Unit]
+Description=Labs ELN application
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/root/labs
+EnvironmentFile=/root/labs/.env
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+StandardOutput=append:/www/labs-data/logs/app.log
+StandardError=append:/www/labs-data/logs/app.err.log
+
+[Install]
+WantedBy=multi-user.target
