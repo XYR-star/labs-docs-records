@@ -10,6 +10,7 @@ export async function exportBackupManifest({
   locations = [],
   attachments = [],
   externalLinks = [],
+  entryInventoryLinks = [],
   movements = [],
   recordingEvents = []
 }) {
@@ -28,6 +29,7 @@ export async function exportBackupManifest({
     locations,
     attachments,
     external_links: externalLinks,
+    entry_inventory_links: entryInventoryLinks,
     inventory_movements: movements,
     recording_events: recordingEvents
   };

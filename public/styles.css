@@ -288,6 +288,27 @@ textarea { resize: vertical; }
   color: var(--muted);
   font-size: 0.78rem;
 }
+.linked-inventory {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.linked-inventory-chip {
+  display: grid;
+  gap: 0.1rem;
+  justify-items: start;
+  min-height: 0;
+  padding: 0.38rem 0.55rem;
+  background: #eef4f7;
+  color: var(--accent-strong);
+  border: 1px solid #bad5df;
+  border-radius: 8px;
+  text-align: left;
+}
+.linked-inventory-chip span {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
 
 .panel-heading {
   display: flex;

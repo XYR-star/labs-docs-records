@@ -212,6 +212,7 @@ export async function listAllForExport(pool) {
     locations,
     attachments,
     externalLinks,
+    entryInventoryLinks,
     movements,
     recordingEvents
   ] = await Promise.all([
@@ -222,6 +223,7 @@ export async function listAllForExport(pool) {
     pool.query('SELECT * FROM storage_locations ORDER BY created_at ASC'),
     pool.query('SELECT * FROM attachments ORDER BY created_at DESC'),
     pool.query('SELECT * FROM external_links ORDER BY created_at DESC'),
+    pool.query('SELECT * FROM entry_inventory_links ORDER BY created_at DESC'),
     pool.query('SELECT * FROM inventory_movements ORDER BY created_at DESC'),
     pool.query('SELECT * FROM recording_events ORDER BY created_at DESC')
   ]);
@@ -234,6 +236,7 @@ export async function listAllForExport(pool) {
     locations: locations.rows,
     attachments: attachments.rows,
     externalLinks: externalLinks.rows,
+    entryInventoryLinks: entryInventoryLinks.rows,
     movements: movements.rows,
     recordingEvents: recordingEvents.rows
   };

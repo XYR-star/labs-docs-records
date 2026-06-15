@@ -185,6 +185,7 @@ async function loadEntries(q = '') {
       <h3>${entry.title}</h3>
       <p>${entry.experiment_title || '未关联实验'} · ${new Date(entry.occurred_at).toLocaleString()} · ${entry.status}</p>
       ${entry.template_key && entry.template_key !== 'blank' ? `<p>${templateLabel(entry.template_key)} · ${templateDataSummary(entry.template_data)}</p>` : ''}
+      ${linkedInventoryHtml(entry.linked_inventory)}
       <p>${entry.body.slice(0, 220)}</p>
       ${tagsHtml(entry.tags)}
     </article>
@@ -192,6 +193,27 @@ async function loadEntries(q = '') {
   const select = $('#attachment-entry');
   select.innerHTML = '<option value="">不关联记录</option>' +
     state.entries.map((entry) => `<option value="${entry.id}">${entry.title}</option>`).join('');
+  $$('.linked-inventory-chip').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!button.dataset.locationId) return;
+      document.querySelector('[data-tab="locations"]').click();
+      await selectLocation(button.dataset.locationId);
+    });
+  });
+}
+
+function linkedInventoryHtml(items = []) {
+  if (!items.length) return '';
+  return `
+    <div class="linked-inventory">
+      ${items.map((item) => `
+        <button class="linked-inventory-chip" data-location-id="${escapeHtml(item.location_id || '')}" type="button">
+          ${escapeHtml(item.name)}
+          <span>${escapeHtml(item.location_name || '未指定位置')}${item.slot_code ? ` / ${escapeHtml(item.slot_code)}` : ''}</span>
+        </button>
+      `).join('')}
+    </div>
+  `;
 }
 
 function templateLabel(key) {
@@ -256,6 +278,7 @@ async function loadLocations() {
 
 async function loadInventory(q = '') {
   state.inventory = await api(`/api/inventory${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+  renderEntryInventoryOptions();
   renderList('#inventory-list', state.inventory, (item) => `
     <article class="list-item">
       <h3>${item.name}</h3>
@@ -264,6 +287,17 @@ async function loadInventory(q = '') {
       ${tagsHtml(item.tags)}
     </article>
   `);
+}
+
+function renderEntryInventoryOptions() {
+  const select = $('#entry-inventory-links');
+  if (!select) return;
+  select.innerHTML = state.inventory.length
+    ? state.inventory.map((item) => {
+      const label = `${item.name} · ${item.location_name || '未指定位置'}${item.slot_code ? ` / ${item.slot_code}` : ''}`;
+      return optionHtml(item.id, label, '');
+    }).join('')
+    : '<option value="" disabled>暂无库存可链接</option>';
 }
 
 function locationDepth(location, byId) {
@@ -526,7 +560,11 @@ async function refreshAll() {
 }
 
 function formJson(form) {
-  const data = Object.fromEntries(new FormData(form));
+  const formData = new FormData(form);
+  const data = Object.fromEntries(formData);
+  if (formData.has('inventory_ids')) {
+    data.inventory_ids = formData.getAll('inventory_ids').filter(Boolean);
+  }
   const templateData = {};
   Object.entries(data).forEach(([key, value]) => {
     if (!key.startsWith('template_data.')) return;

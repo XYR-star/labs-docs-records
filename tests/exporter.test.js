@@ -15,6 +15,7 @@ test('writes backup manifest JSON into the exports directory', async () => {
       experiments: [{ id: 'exp-1', title: 'mRNA transfection' }],
       records: [{ id: 'entry-1', title: 'PCR setup' }],
       inventory: [{ id: 'item-1', name: 'Taq polymerase' }],
+      entryInventoryLinks: [{ entry_id: 'entry-1', item_id: 'item-1' }],
       locations: [{ id: 'loc-1', name: 'Freezer' }],
       attachments: [{ id: 'att-1', original_name: 'gel.png' }]
     });
@@ -28,6 +29,7 @@ test('writes backup manifest JSON into the exports directory', async () => {
     assert.equal(parsed.experiments[0].title, 'mRNA transfection');
     assert.equal(parsed.records[0].title, 'PCR setup');
     assert.equal(parsed.inventory[0].name, 'Taq polymerase');
+    assert.equal(parsed.entry_inventory_links[0].item_id, 'item-1');
     assert.equal(parsed.attachments[0].original_name, 'gel.png');
   } finally {
     await rm(temp, { recursive: true, force: true });

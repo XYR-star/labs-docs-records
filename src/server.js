@@ -60,6 +60,11 @@ function cleanTags(tags) {
   return tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 24);
 }
 
+function cleanUuidList(values) {
+  const list = Array.isArray(values) ? values : values ? [values] : [];
+  return [...new Set(list.map((value) => String(value).trim()).filter(Boolean))].slice(0, 50);
+}
+
 function getClientKey(req) {
   return (
     req.headers['cf-connecting-ip'] ||
@@ -233,18 +238,58 @@ app.get('/api/entries', requireAuth, async (req, res) => {
   const result = q
     ? await pool.query(
         `SELECT en.*, e.title AS experiment_title
+         , COALESCE(
+           jsonb_agg(
+             jsonb_build_object(
+               'id', i.id,
+               'name', i.name,
+               'type', i.type,
+               'identifier', i.identifier,
+               'quantity', i.quantity,
+               'unit', i.unit,
+               'location_id', i.location_id,
+               'location_name', l.name,
+               'slot_code', i.slot_code
+             )
+           ) FILTER (WHERE i.id IS NOT NULL),
+           '[]'::jsonb
+         ) AS linked_inventory
          FROM experiment_entries en
          LEFT JOIN experiments e ON e.id = en.experiment_id
+         LEFT JOIN entry_inventory_links eil ON eil.entry_id = en.id
+         LEFT JOIN inventory_items i ON i.id = eil.item_id
+         LEFT JOIN storage_locations l ON l.id = i.location_id
          WHERE to_tsvector('simple', en.title || ' ' || en.body) @@ plainto_tsquery('simple', $1)
            AND ($2::uuid IS NULL OR en.experiment_id = $2::uuid)
-         ORDER BY occurred_at DESC LIMIT 100`,
+         GROUP BY en.id, e.title
+         ORDER BY en.occurred_at DESC LIMIT 100`,
         [q, experimentId || null]
       )
     : await pool.query(
         `SELECT en.*, e.title AS experiment_title
+         , COALESCE(
+           jsonb_agg(
+             jsonb_build_object(
+               'id', i.id,
+               'name', i.name,
+               'type', i.type,
+               'identifier', i.identifier,
+               'quantity', i.quantity,
+               'unit', i.unit,
+               'location_id', i.location_id,
+               'location_name', l.name,
+               'slot_code', i.slot_code
+             )
+           ) FILTER (WHERE i.id IS NOT NULL),
+           '[]'::jsonb
+         ) AS linked_inventory
          FROM experiment_entries en
          LEFT JOIN experiments e ON e.id = en.experiment_id
+         LEFT JOIN entry_inventory_links eil ON eil.entry_id = en.id
+         LEFT JOIN inventory_items i ON i.id = eil.item_id
+         LEFT JOIN storage_locations l ON l.id = i.location_id
          WHERE ($1::uuid IS NULL OR en.experiment_id = $1::uuid)
+         GROUP BY en.id, e.title
          ORDER BY en.occurred_at DESC LIMIT 100`,
         [experimentId || null]
       )
@@ -254,6 +299,7 @@ app.get('/api/entries', requireAuth, async (req, res) => {
 app.post('/api/entries', requireAuth, async (req, res) => {
   const templateKey = String(req.body.template_key || 'blank');
   const templateData = normalizeTemplateData(templateKey, req.body.template_data || {});
+  const inventoryIds = cleanUuidList(req.body.inventory_ids);
   const result = await pool.query(
     `INSERT INTO experiment_entries (experiment_id, title, body, status, template_key, template_data, occurred_at, tags)
      VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::timestamptz, now()), $8)
@@ -269,12 +315,21 @@ app.post('/api/entries', requireAuth, async (req, res) => {
       cleanTags(req.body.tags)
     ]
   );
+  if (inventoryIds.length) {
+    await pool.query(
+      `INSERT INTO entry_inventory_links (entry_id, item_id)
+       SELECT $1, id FROM inventory_items WHERE id = ANY($2::uuid[])
+       ON CONFLICT DO NOTHING`,
+      [result.rows[0].id, inventoryIds]
+    );
+  }
   await audit(pool, 'create', 'experiment_entry', result.rows[0].id);
   await recordEvent(pool, 'entry.create', 'experiment_entry', result.rows[0].id, `保存实验记录：${result.rows[0].title}`, {
     experiment_id: result.rows[0].experiment_id,
     title: result.rows[0].title,
     template_key: result.rows[0].template_key,
-    status: result.rows[0].status
+    status: result.rows[0].status,
+    inventory_ids: inventoryIds
   });
   res.status(201).json(result.rows[0]);
 });
@@ -282,6 +337,7 @@ app.post('/api/entries', requireAuth, async (req, res) => {
 app.put('/api/entries/:id', requireAuth, async (req, res) => {
   const templateKey = String(req.body.template_key || 'blank');
   const templateData = normalizeTemplateData(templateKey, req.body.template_data || {});
+  const inventoryIds = cleanUuidList(req.body.inventory_ids);
   const result = await pool.query(
     `UPDATE experiment_entries
      SET experiment_id = $2, title = $3, body = $4, status = $5, template_key = $6,
@@ -300,12 +356,22 @@ app.put('/api/entries/:id', requireAuth, async (req, res) => {
     ]
   );
   if (!result.rowCount) return res.status(404).json({ error: 'Entry not found' });
+  await pool.query('DELETE FROM entry_inventory_links WHERE entry_id = $1', [req.params.id]);
+  if (inventoryIds.length) {
+    await pool.query(
+      `INSERT INTO entry_inventory_links (entry_id, item_id)
+       SELECT $1, id FROM inventory_items WHERE id = ANY($2::uuid[])
+       ON CONFLICT DO NOTHING`,
+      [req.params.id, inventoryIds]
+    );
+  }
   await audit(pool, 'update', 'experiment_entry', req.params.id);
   await recordEvent(pool, 'entry.edit', 'experiment_entry', req.params.id, `编辑实验记录：${result.rows[0].title}`, {
     experiment_id: result.rows[0].experiment_id,
     title: result.rows[0].title,
     template_key: result.rows[0].template_key,
-    status: result.rows[0].status
+    status: result.rows[0].status,
+    inventory_ids: inventoryIds
   });
   res.json(result.rows[0]);
 });
@@ -693,6 +759,9 @@ app.post('/api/entries/:entryId/inventory/:itemId', requireAuth, async (req, res
     [req.params.entryId, req.params.itemId]
   );
   await audit(pool, 'link_inventory', 'experiment_entry', req.params.entryId, { item_id: req.params.itemId });
+  await recordEvent(pool, 'entry.link_inventory', 'experiment_entry', req.params.entryId, '链接实验记录和库存', {
+    item_id: req.params.itemId
+  });
   res.status(204).end();
 });
 
