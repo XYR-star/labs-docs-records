@@ -44,6 +44,31 @@ function optionHtml(value, label, selectedValue) {
   return `<option value="${escapeHtml(value || '')}"${selected}>${escapeHtml(label)}</option>`;
 }
 
+function defaultChildForSlot(parentLocation, slotCode) {
+  if (!parentLocation || !slotCode) return null;
+  if (parentLocation.kind === 'freezer') {
+    return {
+      name: `抽屉 ${slotCode}`,
+      kind: 'drawer',
+      layout_type: 'grid',
+      rows: 1,
+      columns: 5,
+      position_code: slotCode
+    };
+  }
+  if (parentLocation.kind === 'drawer' || parentLocation.kind === 'rack') {
+    return {
+      name: `盒子 ${slotCode}`,
+      kind: 'box',
+      layout_type: 'grid',
+      rows: 9,
+      columns: 9,
+      position_code: slotCode
+    };
+  }
+  return null;
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -209,6 +234,7 @@ function renderStorageGrid(view) {
 
 async function showSlotDetail(slot) {
   state.selectedSlot = slot;
+  const parentLocation = state.locations.find((item) => item.id === state.selectedLocationId);
   if (slot.child) {
     $('#slot-detail').innerHTML = `
       <div class="slot-record">
@@ -223,6 +249,45 @@ async function showSlotDetail(slot) {
   }
 
   if (!slot.item) {
+    const childDefault = defaultChildForSlot(parentLocation, slot.code);
+    if (childDefault) {
+      $('#slot-detail').innerHTML = `
+        <div class="empty-slot">
+          <span class="slot-badge">${slot.code}</span>
+          <h4>空位置</h4>
+          <p>在「${escapeHtml(parentLocation.name)}」的 ${slot.code} 创建 ${childDefault.kind === 'drawer' ? '抽屉' : '盒子'}。</p>
+          <form id="quick-child-form" class="mini-form">
+            <label>名称<input name="name" value="${escapeHtml(childDefault.name)}" required /></label>
+            <label>类型
+              <select name="kind">
+                <option value="drawer" ${childDefault.kind === 'drawer' ? 'selected' : ''}>抽屉</option>
+                <option value="rack" ${childDefault.kind === 'rack' ? 'selected' : ''}>层架</option>
+                <option value="box" ${childDefault.kind === 'box' ? 'selected' : ''}>存放盒</option>
+              </select>
+            </label>
+            <div class="form-row compact-row">
+              <label>行<input name="rows" type="number" value="${childDefault.rows}" min="1" max="26" /></label>
+              <label>列<input name="columns" type="number" value="${childDefault.columns}" min="1" max="48" /></label>
+            </div>
+            <input name="layout_type" type="hidden" value="${childDefault.layout_type}" />
+            <input name="position_code" type="hidden" value="${slot.code}" />
+            <input name="parent_id" type="hidden" value="${state.selectedLocationId}" />
+            <button type="submit" class="ghost">创建并进入</button>
+          </form>
+        </div>
+      `;
+      $('#quick-child-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const created = await api('/api/locations', {
+          method: 'POST',
+          body: JSON.stringify(formJson(event.currentTarget))
+        });
+        await loadLocations();
+        await selectLocation(created.id);
+      });
+      return;
+    }
+
     $('#slot-detail').innerHTML = `
       <div class="empty-slot">
         <span class="slot-badge">${slot.code}</span>
@@ -332,10 +397,10 @@ function resetLocationForm() {
 
 function bindForms() {
   $('#location-kind').addEventListener('change', (event) => {
-    if (event.target.value === 'box' || event.target.value === 'freezer' || event.target.value === 'rack') {
+    if (event.target.value === 'box' || event.target.value === 'freezer' || event.target.value === 'rack' || event.target.value === 'drawer') {
       $('#location-layout').value = 'grid';
-      document.querySelector('#location-form [name="rows"]').value = event.target.value === 'box' ? 8 : 4;
-      document.querySelector('#location-form [name="columns"]').value = event.target.value === 'box' ? 12 : 4;
+      document.querySelector('#location-form [name="rows"]').value = event.target.value === 'box' ? 9 : event.target.value === 'drawer' ? 1 : 4;
+      document.querySelector('#location-form [name="columns"]').value = event.target.value === 'box' ? 9 : event.target.value === 'drawer' ? 5 : 6;
     }
   });
 

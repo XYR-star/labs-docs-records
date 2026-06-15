@@ -72,6 +72,35 @@ export function validateSlotCode(slotCode, rows = 8, columns = 12) {
   return valid.has(normalized) ? normalized : null;
 }
 
+export function defaultChildLocationForSlot(parentLocation, slotCode) {
+  const code = String(slotCode || '').trim().toUpperCase();
+  if (!code) return null;
+
+  if (parentLocation?.kind === 'freezer') {
+    return {
+      name: `抽屉 ${code}`,
+      kind: 'drawer',
+      layout_type: 'grid',
+      rows: 1,
+      columns: 5,
+      position_code: code
+    };
+  }
+
+  if (parentLocation?.kind === 'drawer' || parentLocation?.kind === 'rack') {
+    return {
+      name: `盒子 ${code}`,
+      kind: 'box',
+      layout_type: 'grid',
+      rows: 9,
+      columns: 9,
+      position_code: code
+    };
+  }
+
+  return null;
+}
+
 export function slugifyIdPrefix(input) {
   return String(input || 'item')
     .trim()

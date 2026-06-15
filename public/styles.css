@@ -389,6 +389,9 @@ textarea { resize: vertical; }
   padding: 0.65rem;
   background: #f8fafb;
 }
+.compact-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .movement-list article {
   border-top: 1px solid var(--line);
   padding-top: 0.55rem;

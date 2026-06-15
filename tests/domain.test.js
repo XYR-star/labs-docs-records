@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildStoragePath,
+  defaultChildLocationForSlot,
   generateSlotGrid,
   normalizeInventoryQuantity,
   validateSlotCode
@@ -40,4 +41,32 @@ test('validates slot codes against a box layout', () => {
   assert.equal(validateSlotCode('b7', 8, 12), 'B7');
   assert.equal(validateSlotCode('I1', 8, 12), null);
   assert.equal(validateSlotCode('A13', 8, 12), null);
+});
+
+test('suggests contextual child locations for empty freezer and drawer slots', () => {
+  assert.deepEqual(
+    defaultChildLocationForSlot({ kind: 'freezer', name: '-80 一号冰箱' }, 'C6'),
+    {
+      name: '抽屉 C6',
+      kind: 'drawer',
+      layout_type: 'grid',
+      rows: 1,
+      columns: 5,
+      position_code: 'C6'
+    }
+  );
+
+  assert.deepEqual(
+    defaultChildLocationForSlot({ kind: 'drawer', name: '抽屉 C6' }, 'A3'),
+    {
+      name: '盒子 A3',
+      kind: 'box',
+      layout_type: 'grid',
+      rows: 9,
+      columns: 9,
+      position_code: 'A3'
+    }
+  );
+
+  assert.equal(defaultChildLocationForSlot({ kind: 'box', name: '盒子 A3' }, 'B7'), null);
 });
