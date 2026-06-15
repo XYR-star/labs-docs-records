@@ -8,13 +8,18 @@ export function itemState(item) {
   return 'occupied';
 }
 
-export function buildStorageView({ location, inventory = [] }) {
+export function buildStorageView({ location, inventory = [], children = [] }) {
   const rows = Number(location?.rows || 8);
   const columns = Number(location?.columns || 12);
   const bySlot = new Map(
     inventory
       .filter((item) => item.slot_code)
       .map((item) => [String(item.slot_code).toUpperCase(), item])
+  );
+  const childBySlot = new Map(
+    children
+      .filter((child) => child.position_code)
+      .map((child) => [String(child.position_code).toUpperCase(), child])
   );
 
   return {
@@ -23,10 +28,12 @@ export function buildStorageView({ location, inventory = [] }) {
     columns,
     slots: generateSlotGrid(rows, columns).map((slot) => {
       const item = bySlot.get(slot.code) || null;
+      const child = childBySlot.get(slot.code) || null;
       return {
         ...slot,
+        child,
         item,
-        state: itemState(item)
+        state: child ? 'child' : itemState(item)
       };
     })
   };

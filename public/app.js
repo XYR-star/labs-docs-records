@@ -3,7 +3,8 @@ const state = {
   locations: [],
   inventory: [],
   selectedLocationId: null,
-  selectedSlot: null
+  selectedSlot: null,
+  editingLocationId: null
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -36,6 +37,11 @@ function renderList(target, items, render) {
 
 function tagsHtml(tags = []) {
   return `<div class="pill-row">${tags.map((tag) => `<span class="pill">${tag}</span>`).join('')}</div>`;
+}
+
+function optionHtml(value, label, selectedValue) {
+  const selected = String(value || '') === String(selectedValue || '') ? ' selected' : '';
+  return `<option value="${escapeHtml(value || '')}"${selected}>${escapeHtml(label)}</option>`;
 }
 
 function escapeHtml(value) {
@@ -143,7 +149,7 @@ function renderLocationTree() {
       <button class="tree-node${active}" data-location-id="${location.id}" style="--depth:${depth}">
         <span>${icon}</span>
         <strong>${escapeHtml(location.name)}</strong>
-        <small>${escapeHtml(location.kind)}${location.layout_type === 'grid' ? ` · ${location.rows}x${location.columns}` : ''}</small>
+        <small>${escapeHtml(location.kind)}${location.position_code ? ` · ${escapeHtml(location.position_code)}` : ''}${location.layout_type === 'grid' ? ` · ${location.rows}x${location.columns}` : ''}</small>
       </button>
     `;
   }).join('') || '<p class="muted-text">暂无位置</p>';
@@ -163,6 +169,7 @@ async function selectLocation(locationId) {
   $('#selected-location-name').textContent = location.name;
   $('#selected-location-meta').textContent = `${location.kind}${location.layout_type === 'grid' ? ` · ${location.rows} x ${location.columns}` : ''}`;
   $('#slot-detail').innerHTML = '<p class="muted-text">点击一个孔位查看样本和历史。</p>';
+  fillLocationForm(location);
 
   if (location.layout_type !== 'grid') {
     const children = state.locations.filter((item) => item.parent_id === location.id);
@@ -187,8 +194,8 @@ function renderStorageGrid(view) {
   grid.innerHTML = view.slots.map((slot) => `
     <button class="slot-cell ${slot.state}" data-slot-code="${slot.code}">
       <span class="slot-code">${slot.code}</span>
-      <strong>${slot.item ? escapeHtml(slot.item.name) : ''}</strong>
-      <small>${slot.item ? `${slot.item.quantity} ${slot.item.unit || ''}` : '空'}</small>
+      <strong>${slot.child ? escapeHtml(slot.child.name) : slot.item ? escapeHtml(slot.item.name) : ''}</strong>
+      <small>${slot.child ? escapeHtml(slot.child.kind) : slot.item ? `${slot.item.quantity} ${slot.item.unit || ''}` : '空'}</small>
     </button>
   `).join('');
 
@@ -202,6 +209,19 @@ function renderStorageGrid(view) {
 
 async function showSlotDetail(slot) {
   state.selectedSlot = slot;
+  if (slot.child) {
+    $('#slot-detail').innerHTML = `
+      <div class="slot-record">
+        <span class="slot-badge">${slot.code}</span>
+        <h4>${escapeHtml(slot.child.name)}</h4>
+        <p>${escapeHtml(slot.child.kind)} · 子位置</p>
+        <button id="open-child-button" class="ghost">打开这个位置</button>
+      </div>
+    `;
+    $('#open-child-button').addEventListener('click', () => selectLocation(slot.child.id));
+    return;
+  }
+
   if (!slot.item) {
     $('#slot-detail').innerHTML = `
       <div class="empty-slot">
@@ -229,6 +249,20 @@ async function showSlotDetail(slot) {
       <p>${slot.item.quantity} ${escapeHtml(slot.item.unit || '')} · ${escapeHtml(slot.item.status)}</p>
     </div>
     <div class="movement-list">
+      <form id="slot-adjust-form" class="mini-form">
+        <label>数量变化<input name="delta" type="number" step="0.01" placeholder="-1 或 1" required /></label>
+        <label>备注<input name="note" placeholder="取出、补充、盘点修正" /></label>
+        <button type="submit" class="ghost">记录变化</button>
+      </form>
+      <form id="slot-move-form" class="mini-form">
+        <label>移动到位置
+          <select name="location_id">
+            ${state.locations.map((location) => optionHtml(location.id, location.name, slot.item.location_id)).join('')}
+          </select>
+        </label>
+        <label>新孔位<input name="slot_code" value="${escapeHtml(slot.item.slot_code || '')}" /></label>
+        <button type="submit" class="ghost">移动/修改位置</button>
+      </form>
       ${movements.map((movement) => `
         <article>
           <strong>${escapeHtml(movement.action)}</strong>
@@ -239,6 +273,24 @@ async function showSlotDetail(slot) {
       `).join('') || '<p class="muted-text">暂无历史</p>'}
     </div>
   `;
+
+  $('#slot-adjust-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await api(`/api/inventory/${slot.item.id}/adjust`, {
+      method: 'POST',
+      body: JSON.stringify(formJson(event.currentTarget))
+    });
+    await Promise.all([loadDashboard(), loadInventory(), selectLocation(state.selectedLocationId)]);
+  });
+
+  $('#slot-move-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await api(`/api/inventory/${slot.item.id}/move`, {
+      method: 'POST',
+      body: JSON.stringify(formJson(event.currentTarget))
+    });
+    await Promise.all([loadInventory(), selectLocation(state.selectedLocationId)]);
+  });
 }
 
 async function refreshAll() {
@@ -257,12 +309,33 @@ function formJson(form) {
   return data;
 }
 
+function fillLocationForm(location) {
+  const form = $('#location-form');
+  state.editingLocationId = location.id;
+  form.name.value = location.name || '';
+  form.parent_id.value = location.parent_id || '';
+  form.kind.value = location.kind || 'location';
+  form.layout_type.value = location.layout_type || 'none';
+  form.rows.value = location.rows || 0;
+  form.columns.value = location.columns || 0;
+  form.position_code.value = location.position_code || '';
+  form.notes.value = location.notes || '';
+  $('#location-submit').textContent = '保存位置';
+}
+
+function resetLocationForm() {
+  state.editingLocationId = null;
+  $('#location-form').reset();
+  $('#location-layout').value = 'none';
+  $('#location-submit').textContent = '添加位置';
+}
+
 function bindForms() {
   $('#location-kind').addEventListener('change', (event) => {
-    if (event.target.value === 'box') {
+    if (event.target.value === 'box' || event.target.value === 'freezer' || event.target.value === 'rack') {
       $('#location-layout').value = 'grid';
-      document.querySelector('#location-form [name="rows"]').value = 8;
-      document.querySelector('#location-form [name="columns"]').value = 12;
+      document.querySelector('#location-form [name="rows"]').value = event.target.value === 'box' ? 8 : 4;
+      document.querySelector('#location-form [name="columns"]').value = event.target.value === 'box' ? 12 : 4;
     }
   });
 
@@ -296,9 +369,25 @@ function bindForms() {
 
   $('#location-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    await api('/api/locations', { method: 'POST', body: JSON.stringify(formJson(event.currentTarget)) });
-    event.currentTarget.reset();
-    $('#location-layout').value = 'none';
+    const data = formJson(event.currentTarget);
+    if (state.editingLocationId) {
+      await api(`/api/locations/${state.editingLocationId}`, { method: 'PUT', body: JSON.stringify(data) });
+    } else {
+      await api('/api/locations', { method: 'POST', body: JSON.stringify(data) });
+    }
+    resetLocationForm();
+    await Promise.all([loadLocations(), loadInventory()]);
+  });
+
+  $('#location-reset').addEventListener('click', resetLocationForm);
+
+  $('#location-delete').addEventListener('click', async () => {
+    if (!state.selectedLocationId) return;
+    const location = state.locations.find((item) => item.id === state.selectedLocationId);
+    if (!confirm(`删除位置「${location?.name || ''}」？必须先清空其中的子位置和库存。`)) return;
+    await api(`/api/locations/${state.selectedLocationId}`, { method: 'DELETE' });
+    state.selectedLocationId = null;
+    resetLocationForm();
     await Promise.all([loadLocations(), loadInventory()]);
   });
 

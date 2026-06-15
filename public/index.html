@@ -162,9 +162,14 @@
                 </label>
                 <label>行数<input name="rows" type="number" min="1" max="26" value="8" /></label>
                 <label>列数<input name="columns" type="number" min="1" max="48" value="12" /></label>
+                <label>所在格位<input name="position_code" placeholder="例如：A1，用于冰箱/层架网格" /></label>
               </div>
               <label>说明<textarea name="notes" rows="3"></textarea></label>
-              <button type="submit">添加位置</button>
+              <div class="actions">
+                <button type="submit" id="location-submit">添加位置</button>
+                <button type="button" class="ghost" id="location-reset">新建</button>
+                <button type="button" class="ghost danger" id="location-delete">删除选中位置</button>
+              </div>
             </form>
             <div class="storage-workspace">
               <aside class="storage-tree-panel">

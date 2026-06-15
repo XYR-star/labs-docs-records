@@ -44,6 +44,9 @@ button:hover, .button:hover { background: var(--accent-strong); }
   border: 1px solid var(--line);
 }
 .ghost:hover { background: var(--soft); }
+.danger {
+  color: var(--warn);
+}
 
 .hidden { display: none !important; }
 .eyebrow {
@@ -331,6 +334,10 @@ textarea { resize: vertical; }
   border-color: #ddc17e;
   background: #fff7df;
 }
+.slot-cell.child {
+  border-color: #9fb7c4;
+  background: #eef4f7;
+}
 .slot-cell.discarded {
   opacity: 0.58;
 }
@@ -373,6 +380,14 @@ textarea { resize: vertical; }
 .movement-list {
   display: grid;
   gap: 0.55rem;
+}
+.mini-form {
+  display: grid;
+  gap: 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.65rem;
+  background: #f8fafb;
 }
 .movement-list article {
   border-top: 1px solid var(--line);
