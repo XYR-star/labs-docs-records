@@ -619,5 +619,15 @@ api('/api/dashboard')
   .catch(() => {});
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    location.reload();
+  });
+
+  navigator.serviceWorker
+    .register('/service-worker.js')
+    .then((registration) => registration.update())
+    .catch(() => {});
 }
