@@ -319,8 +319,8 @@ app.post('/api/inventory', requireAuth, async (req, res) => {
 
   const result = await pool.query(
     `INSERT INTO inventory_items
-      (location_id, type, name, identifier, slot_code, quantity, unit, expires_on, status, notes, tags)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      (location_id, type, name, identifier, slot_code, quantity, unit, stored_on, expires_on, status, notes, tags)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING *`,
     [
       req.body.location_id || null,
@@ -330,6 +330,7 @@ app.post('/api/inventory', requireAuth, async (req, res) => {
       slotCode || '',
       Number(req.body.quantity || 0),
       String(req.body.unit || ''),
+      req.body.stored_on || null,
       req.body.expires_on || null,
       String(req.body.status || 'available'),
       String(req.body.notes || ''),
@@ -390,8 +391,8 @@ app.put('/api/inventory/:id', requireAuth, async (req, res) => {
   const result = await pool.query(
     `UPDATE inventory_items
      SET location_id = $2, type = $3, name = $4, identifier = $5, slot_code = $6,
-         quantity = $7, unit = $8, expires_on = $9, status = $10, notes = $11,
-         tags = $12, updated_at = now()
+         quantity = $7, unit = $8, stored_on = $9, expires_on = $10, status = $11, notes = $12,
+         tags = $13, updated_at = now()
      WHERE id = $1 RETURNING *`,
     [
       req.params.id,
@@ -402,6 +403,7 @@ app.put('/api/inventory/:id', requireAuth, async (req, res) => {
       slotCode || '',
       Number(req.body.quantity || 0),
       String(req.body.unit || ''),
+      req.body.stored_on || null,
       req.body.expires_on || null,
       String(req.body.status || 'available'),
       String(req.body.notes || ''),
@@ -548,11 +550,11 @@ app.post('/api/export/manifest', requireAuth, async (_req, res) => {
 
 app.get('/api/export/inventory.csv', requireAuth, async (_req, res) => {
   const result = await pool.query(
-    `SELECT id, type, name, identifier, quantity, unit, status, expires_on, location_id
+    `SELECT id, type, name, identifier, quantity, unit, status, stored_on, location_id
      FROM inventory_items ORDER BY updated_at DESC`
   );
   const rows = [
-    ['id', 'type', 'name', 'identifier', 'quantity', 'unit', 'status', 'expires_on', 'location_id'],
+    ['id', 'type', 'name', 'identifier', 'quantity', 'unit', 'status', 'stored_on', 'location_id'],
     ...result.rows.map((row) => [
       row.id,
       row.type,
@@ -561,7 +563,7 @@ app.get('/api/export/inventory.csv', requireAuth, async (_req, res) => {
       row.quantity,
       row.unit,
       row.status,
-      row.expires_on || '',
+      row.stored_on || '',
       row.location_id || ''
     ])
   ];

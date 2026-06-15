@@ -140,7 +140,7 @@ async function loadInventory(q = '') {
     <article class="list-item">
       <h3>${item.name}</h3>
       <p>${item.type} · ${item.identifier || '无编号'} · ${item.quantity} ${item.unit || ''}</p>
-      <p>${item.location_name || '未指定位置'}${item.slot_code ? ` / ${item.slot_code}` : ''} · ${item.status}</p>
+      <p>${item.location_name || '未指定位置'}${item.slot_code ? ` / ${item.slot_code}` : ''} · ${item.status}${item.stored_on ? ` · 存放 ${new Date(item.stored_on).toLocaleDateString()}` : ''}</p>
       ${tagsHtml(item.tags)}
     </article>
   `);
@@ -345,7 +345,7 @@ async function showSlotDetail(slot) {
       <span class="slot-badge">${slot.code}</span>
       <h4>${escapeHtml(slot.item.name)}</h4>
       <p>${escapeHtml(slot.item.type)} · ${escapeHtml(slot.item.identifier || '无编号')}</p>
-      <p>${slot.item.quantity} ${escapeHtml(slot.item.unit || '')} · ${escapeHtml(slot.item.status)}</p>
+      <p>${slot.item.quantity} ${escapeHtml(slot.item.unit || '')} · ${escapeHtml(slot.item.status)}${slot.item.stored_on ? ` · 存放 ${new Date(slot.item.stored_on).toLocaleDateString()}` : ''}</p>
     </div>
     <div class="movement-list">
       <form id="slot-adjust-form" class="mini-form">

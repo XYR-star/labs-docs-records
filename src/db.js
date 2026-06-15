@@ -52,6 +52,7 @@ export async function migrate(pool) {
       slot_code TEXT NOT NULL DEFAULT '',
       quantity NUMERIC NOT NULL DEFAULT 0,
       unit TEXT NOT NULL DEFAULT '',
+      stored_on DATE,
       expires_on DATE,
       status TEXT NOT NULL DEFAULT 'available',
       notes TEXT NOT NULL DEFAULT '',
@@ -125,6 +126,7 @@ export async function migrate(pool) {
     ALTER TABLE storage_locations ADD COLUMN IF NOT EXISTS rows INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE storage_locations ADD COLUMN IF NOT EXISTS columns INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS slot_code TEXT NOT NULL DEFAULT '';
+    ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS stored_on DATE;
   `);
 }
 
