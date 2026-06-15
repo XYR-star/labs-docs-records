@@ -83,6 +83,23 @@ export async function migrate(pool) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS recording_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL DEFAULT '',
+      summary TEXT NOT NULL DEFAULT '',
+      metadata JSONB NOT NULL DEFAULT '{}',
+      actor TEXT NOT NULL DEFAULT 'admin',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     CREATE TABLE IF NOT EXISTS attachments (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       entry_id UUID REFERENCES experiment_entries(id) ON DELETE SET NULL,
@@ -138,6 +155,38 @@ export async function audit(pool, action, entityType, entityId = '', metadata = 
   );
 }
 
+export async function getRecordingStartedAt(pool) {
+  const result = await pool.query(`SELECT value FROM app_settings WHERE key = 'recording_started_at'`);
+  return result.rows[0]?.value || null;
+}
+
+export async function startRecording(pool) {
+  const existing = await getRecordingStartedAt(pool);
+  if (existing) return existing;
+
+  const startedAt = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO app_settings (key, value)
+     VALUES ('recording_started_at', $1)
+     ON CONFLICT (key) DO UPDATE SET value = app_settings.value`,
+    [startedAt]
+  );
+  return startedAt;
+}
+
+export async function recordEvent(pool, action, entityType, entityId = '', summary = '', metadata = {}) {
+  const startedAt = await getRecordingStartedAt(pool);
+  if (!startedAt) return null;
+
+  const result = await pool.query(
+    `INSERT INTO recording_events (action, entity_type, entity_id, summary, metadata)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
+    [action, entityType, entityId, summary, metadata]
+  );
+  return result.rows[0];
+}
+
 export async function listAllForExport(pool) {
   const [
     records,
@@ -146,7 +195,8 @@ export async function listAllForExport(pool) {
     locations,
     attachments,
     externalLinks,
-    movements
+    movements,
+    recordingEvents
   ] = await Promise.all([
     pool.query('SELECT * FROM experiment_entries ORDER BY occurred_at DESC'),
     pool.query('SELECT * FROM events ORDER BY occurred_at DESC'),
@@ -154,7 +204,8 @@ export async function listAllForExport(pool) {
     pool.query('SELECT * FROM storage_locations ORDER BY created_at ASC'),
     pool.query('SELECT * FROM attachments ORDER BY created_at DESC'),
     pool.query('SELECT * FROM external_links ORDER BY created_at DESC'),
-    pool.query('SELECT * FROM inventory_movements ORDER BY created_at DESC')
+    pool.query('SELECT * FROM inventory_movements ORDER BY created_at DESC'),
+    pool.query('SELECT * FROM recording_events ORDER BY created_at DESC')
   ]);
 
   return {
@@ -164,6 +215,7 @@ export async function listAllForExport(pool) {
     locations: locations.rows,
     attachments: attachments.rows,
     externalLinks: externalLinks.rows,
-    movements: movements.rows
+    movements: movements.rows,
+    recordingEvents: recordingEvents.rows
   };
 }

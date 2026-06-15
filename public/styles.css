@@ -129,6 +129,15 @@ nav {
   align-items: center;
   flex-wrap: wrap;
 }
+.recording-button.active,
+.recording-button:disabled {
+  background: #274f45;
+  cursor: default;
+}
+.recording-status {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
 
 .metric-grid {
   display: grid;

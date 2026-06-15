@@ -4,7 +4,9 @@ const state = {
   inventory: [],
   selectedLocationId: null,
   selectedSlot: null,
-  editingLocationId: null
+  editingLocationId: null,
+  recording: { enabled: false, started_at: null },
+  recordingEvents: []
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -87,6 +89,43 @@ async function loadDashboard() {
     <article class="list-item">
       <div><h3>${item.name}</h3><p>${item.quantity} ${item.unit || ''}</p></div>
       <span class="pill">${item.status}</span>
+    </article>
+  `);
+}
+
+async function loadRecording() {
+  state.recording = await api('/api/recording');
+  state.recordingEvents = state.recording.enabled ? await api('/api/recording/events') : [];
+  renderRecording();
+}
+
+function renderRecording() {
+  const button = $('#recording-button');
+  const status = $('#recording-status');
+  const summary = $('#recording-summary');
+
+  if (state.recording.enabled) {
+    const startedAt = new Date(state.recording.started_at).toLocaleString();
+    button.textContent = '记录中';
+    button.disabled = true;
+    button.classList.add('active');
+    status.textContent = `开始于 ${startedAt}`;
+    summary.textContent = `${state.recordingEvents.length} 条最近记录`;
+  } else {
+    button.textContent = '开始记录';
+    button.disabled = false;
+    button.classList.remove('active');
+    status.textContent = '未开始记录';
+    summary.textContent = '点击开始记录后启用';
+  }
+
+  renderList('#recording-events-list', state.recordingEvents, (event) => `
+    <article class="list-item">
+      <div>
+        <h3>${escapeHtml(event.summary || event.action)}</h3>
+        <p>${escapeHtml(event.action)} · ${new Date(event.created_at).toLocaleString()}</p>
+      </div>
+      <span class="pill">${escapeHtml(event.entity_type)}</span>
     </article>
   `);
 }
@@ -319,6 +358,7 @@ async function showSlotDetail(slot) {
           body: JSON.stringify(formJson(event.currentTarget))
         });
         await loadLocations();
+        await loadRecording();
         await selectLocation(created.id);
       });
       return;
@@ -379,7 +419,7 @@ async function showSlotDetail(slot) {
       method: 'POST',
       body: JSON.stringify(formJson(event.currentTarget))
     });
-    await Promise.all([loadDashboard(), loadInventory(), selectLocation(state.selectedLocationId)]);
+    await Promise.all([loadDashboard(), loadRecording(), loadInventory(), selectLocation(state.selectedLocationId)]);
   });
 
   $('#slot-move-form').addEventListener('submit', async (event) => {
@@ -388,13 +428,14 @@ async function showSlotDetail(slot) {
       method: 'POST',
       body: JSON.stringify(formJson(event.currentTarget))
     });
-    await Promise.all([loadInventory(), selectLocation(state.selectedLocationId)]);
+    await Promise.all([loadRecording(), loadInventory(), selectLocation(state.selectedLocationId)]);
   });
 }
 
 async function refreshAll() {
   await Promise.all([
     loadDashboard(),
+    loadRecording(),
     loadEntries(),
     loadEvents(),
     loadLocations(),
@@ -473,21 +514,21 @@ function bindForms() {
       body: JSON.stringify(formJson(event.currentTarget))
     });
     $('#slot-inventory-dialog').close();
-    await Promise.all([loadDashboard(), loadInventory(), selectLocation(state.selectedLocationId)]);
+    await Promise.all([loadDashboard(), loadRecording(), loadInventory(), selectLocation(state.selectedLocationId)]);
   });
 
   $('#entry-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     await api('/api/entries', { method: 'POST', body: JSON.stringify(formJson(event.currentTarget)) });
     event.currentTarget.reset();
-    await Promise.all([loadDashboard(), loadEntries()]);
+    await Promise.all([loadDashboard(), loadRecording(), loadEntries()]);
   });
 
   $('#event-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     await api('/api/events', { method: 'POST', body: JSON.stringify(formJson(event.currentTarget)) });
     event.currentTarget.reset();
-    await Promise.all([loadDashboard(), loadEvents()]);
+    await Promise.all([loadDashboard(), loadRecording(), loadEvents()]);
   });
 
   $('#location-form').addEventListener('submit', async (event) => {
@@ -499,7 +540,7 @@ function bindForms() {
       await api('/api/locations', { method: 'POST', body: JSON.stringify(data) });
     }
     resetLocationForm();
-    await Promise.all([loadLocations(), loadInventory()]);
+    await Promise.all([loadRecording(), loadLocations(), loadInventory()]);
   });
 
   $('#location-reset').addEventListener('click', resetLocationForm);
@@ -511,14 +552,14 @@ function bindForms() {
     await api(`/api/locations/${state.selectedLocationId}`, { method: 'DELETE' });
     state.selectedLocationId = null;
     resetLocationForm();
-    await Promise.all([loadLocations(), loadInventory()]);
+    await Promise.all([loadRecording(), loadLocations(), loadInventory()]);
   });
 
   $('#inventory-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     await api('/api/inventory', { method: 'POST', body: JSON.stringify(formJson(event.currentTarget)) });
     event.currentTarget.reset();
-    await Promise.all([loadDashboard(), loadInventory()]);
+    await Promise.all([loadDashboard(), loadRecording(), loadInventory()]);
   });
 
   $('#attachment-form').addEventListener('submit', async (event) => {
@@ -551,6 +592,12 @@ function bindNavigation() {
 
   $('#entry-search-button').addEventListener('click', () => loadEntries($('#entry-search').value));
   $('#inventory-search-button').addEventListener('click', () => loadInventory($('#inventory-search').value));
+  $('#recording-button').addEventListener('click', async () => {
+    if (state.recording.enabled) return;
+    if (!confirm('开始正式记录后，后续保存、编辑、存入、取用和删除位置都会写入操作流水。现在开始吗？')) return;
+    state.recording = await api('/api/recording/start', { method: 'POST', body: '{}' });
+    await loadRecording();
+  });
   $('#export-button').addEventListener('click', async () => {
     const result = await api('/api/export/manifest', { method: 'POST', body: '{}' });
     alert(`已导出：${result.filename}`);

@@ -9,7 +9,8 @@ export async function exportBackupManifest({
   locations = [],
   attachments = [],
   externalLinks = [],
-  movements = []
+  movements = [],
+  recordingEvents = []
 }) {
   await mkdir(exportsDir, { recursive: true });
 
@@ -25,7 +26,8 @@ export async function exportBackupManifest({
     locations,
     attachments,
     external_links: externalLinks,
-    inventory_movements: movements
+    inventory_movements: movements,
+    recording_events: recordingEvents
   };
 
   await writeFile(filepath, JSON.stringify(payload, null, 2));

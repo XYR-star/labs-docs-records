@@ -7,10 +7,19 @@ import multer from 'multer';
 import cookie from 'cookie';
 
 import { getConfig } from './config.js';
-import { createPool, migrate, audit, listAllForExport } from './db.js';
+import {
+  createPool,
+  migrate,
+  audit,
+  getRecordingStartedAt,
+  listAllForExport,
+  recordEvent,
+  startRecording
+} from './db.js';
 import { exportBackupManifest } from './exporter.js';
 import { normalizeInventoryQuantity, validateSlotCode } from './domain.js';
 import { buildStorageView } from './storage-view.js';
+import { createRecordingState } from './recording.js';
 import { signSession, verifyPassword, verifySession } from './auth.js';
 import { createLoginRateLimiter } from './rate-limit.js';
 
@@ -129,6 +138,26 @@ app.get('/api/dashboard', requireAuth, async (_req, res) => {
   });
 });
 
+app.get('/api/recording', requireAuth, async (_req, res) => {
+  res.json(createRecordingState(await getRecordingStartedAt(pool)));
+});
+
+app.post('/api/recording/start', requireAuth, async (_req, res) => {
+  const wasStarted = await getRecordingStartedAt(pool);
+  const startedAt = await startRecording(pool);
+  if (!wasStarted) {
+    await recordEvent(pool, 'recording.start', 'system', 'recording', '开始正式记录操作流水', {
+      started_at: startedAt
+    });
+  }
+  res.json(createRecordingState(startedAt));
+});
+
+app.get('/api/recording/events', requireAuth, async (_req, res) => {
+  const result = await pool.query('SELECT * FROM recording_events ORDER BY created_at DESC LIMIT 200');
+  res.json(result.rows);
+});
+
 app.get('/api/entries', requireAuth, async (req, res) => {
   const q = String(req.query.q || '').trim();
   const result = q
@@ -156,6 +185,10 @@ app.post('/api/entries', requireAuth, async (req, res) => {
     ]
   );
   await audit(pool, 'create', 'experiment_entry', result.rows[0].id);
+  await recordEvent(pool, 'entry.create', 'experiment_entry', result.rows[0].id, `保存实验记录：${result.rows[0].title}`, {
+    title: result.rows[0].title,
+    status: result.rows[0].status
+  });
   res.status(201).json(result.rows[0]);
 });
 
@@ -174,6 +207,10 @@ app.put('/api/entries/:id', requireAuth, async (req, res) => {
   );
   if (!result.rowCount) return res.status(404).json({ error: 'Entry not found' });
   await audit(pool, 'update', 'experiment_entry', req.params.id);
+  await recordEvent(pool, 'entry.edit', 'experiment_entry', req.params.id, `编辑实验记录：${result.rows[0].title}`, {
+    title: result.rows[0].title,
+    status: result.rows[0].status
+  });
   res.json(result.rows[0]);
 });
 
@@ -196,6 +233,10 @@ app.post('/api/events', requireAuth, async (req, res) => {
     ]
   );
   await audit(pool, 'create', 'event', result.rows[0].id);
+  await recordEvent(pool, 'event.create', 'event', result.rows[0].id, `保存事件：${result.rows[0].title}`, {
+    kind: result.rows[0].kind,
+    title: result.rows[0].title
+  });
   res.status(201).json(result.rows[0]);
 });
 
@@ -220,6 +261,11 @@ app.post('/api/locations', requireAuth, async (req, res) => {
     ]
   );
   await audit(pool, 'create', 'storage_location', result.rows[0].id);
+  await recordEvent(pool, 'location.create', 'storage_location', result.rows[0].id, `新增位置：${result.rows[0].name}`, {
+    kind: result.rows[0].kind,
+    parent_id: result.rows[0].parent_id,
+    position_code: result.rows[0].position_code
+  });
   res.status(201).json(result.rows[0]);
 });
 
@@ -244,6 +290,13 @@ app.put('/api/locations/:id', requireAuth, async (req, res) => {
   );
   if (!result.rowCount) return res.status(404).json({ error: 'Location not found' });
   await audit(pool, 'update', 'storage_location', req.params.id);
+  await recordEvent(pool, 'location.edit', 'storage_location', req.params.id, `编辑位置：${result.rows[0].name}`, {
+    kind: result.rows[0].kind,
+    parent_id: result.rows[0].parent_id,
+    position_code: result.rows[0].position_code,
+    rows: result.rows[0].rows,
+    columns: result.rows[0].columns
+  });
   res.json(result.rows[0]);
 });
 
@@ -258,9 +311,13 @@ app.delete('/api/locations/:id', requireAuth, async (req, res) => {
     });
   }
 
-  const result = await pool.query('DELETE FROM storage_locations WHERE id = $1 RETURNING id', [req.params.id]);
+  const result = await pool.query('DELETE FROM storage_locations WHERE id = $1 RETURNING id, name, kind, position_code', [req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Location not found' });
   await audit(pool, 'delete', 'storage_location', req.params.id);
+  await recordEvent(pool, 'location.delete', 'storage_location', req.params.id, `删除位置：${result.rows[0].name}`, {
+    kind: result.rows[0].kind,
+    position_code: result.rows[0].position_code
+  });
   res.status(204).end();
 });
 
@@ -350,6 +407,12 @@ app.post('/api/inventory', requireAuth, async (req, res) => {
     ]
   );
   await audit(pool, 'create', 'inventory_item', result.rows[0].id);
+  await recordEvent(pool, 'inventory.store', 'inventory_item', result.rows[0].id, `存入库存：${result.rows[0].name}`, {
+    location_id: result.rows[0].location_id,
+    slot_code: result.rows[0].slot_code,
+    quantity: result.rows[0].quantity,
+    unit: result.rows[0].unit
+  });
   res.status(201).json(result.rows[0]);
 });
 
@@ -369,6 +432,20 @@ app.post('/api/inventory/:id/adjust', requireAuth, async (req, res) => {
     [req.params.id, existing.rows[0].quantity, nextQuantity, String(req.body.note || '')]
   );
   await audit(pool, 'adjust_quantity', 'inventory_item', req.params.id, { delta: req.body.delta });
+  const delta = Number(req.body.delta || 0);
+  await recordEvent(
+    pool,
+    delta < 0 ? 'inventory.remove' : 'inventory.adjust',
+    'inventory_item',
+    req.params.id,
+    `${delta < 0 ? '取用' : '调整'}库存：${existing.rows[0].name}（${existing.rows[0].quantity} -> ${nextQuantity}）`,
+    {
+      delta,
+      quantity_before: existing.rows[0].quantity,
+      quantity_after: nextQuantity,
+      note: String(req.body.note || '')
+    }
+  );
   res.json(result.rows[0]);
 });
 
@@ -431,6 +508,21 @@ app.put('/api/inventory/:id', requireAuth, async (req, res) => {
     ]
   );
   await audit(pool, 'update', 'inventory_item', req.params.id);
+  await recordEvent(
+    pool,
+    moved ? 'inventory.move' : 'inventory.edit',
+    'inventory_item',
+    req.params.id,
+    `${moved ? '移动/修改位置' : '编辑库存'}：${result.rows[0].name}`,
+    {
+      from_location_id: existing.rows[0].location_id,
+      to_location_id: result.rows[0].location_id,
+      from_slot_code: existing.rows[0].slot_code,
+      to_slot_code: result.rows[0].slot_code,
+      quantity_before: existing.rows[0].quantity,
+      quantity_after: result.rows[0].quantity
+    }
+  );
   res.json(result.rows[0]);
 });
 
@@ -474,6 +566,13 @@ app.post('/api/inventory/:id/move', requireAuth, async (req, res) => {
     from_location_id: existing.rows[0].location_id,
     to_location_id: target.id,
     to_slot_code: slotCode || ''
+  });
+  await recordEvent(pool, 'inventory.move', 'inventory_item', req.params.id, `移动库存：${existing.rows[0].name}`, {
+    from_location_id: existing.rows[0].location_id,
+    to_location_id: target.id,
+    from_slot_code: existing.rows[0].slot_code,
+    to_slot_code: slotCode || '',
+    note: String(req.body.note || '')
   });
   res.json(result.rows[0]);
 });
@@ -519,6 +618,11 @@ app.post('/api/attachments', requireAuth, upload.single('file'), async (req, res
     ]
   );
   await audit(pool, 'upload', 'attachment', result.rows[0].id);
+  await recordEvent(pool, 'attachment.upload', 'attachment', result.rows[0].id, `上传附件：${result.rows[0].original_name}`, {
+    entry_id: result.rows[0].entry_id,
+    item_id: result.rows[0].item_id,
+    size_bytes: result.rows[0].size_bytes
+  });
   res.status(201).json(result.rows[0]);
 });
 
@@ -535,6 +639,11 @@ app.post('/api/external-links', requireAuth, async (req, res) => {
     ]
   );
   await audit(pool, 'create', 'external_link', result.rows[0].id);
+  await recordEvent(pool, 'external_link.create', 'external_link', result.rows[0].id, `保存外链：${result.rows[0].label}`, {
+    provider: result.rows[0].provider,
+    entry_id: result.rows[0].entry_id,
+    item_id: result.rows[0].item_id
+  });
   res.status(201).json(result.rows[0]);
 });
 

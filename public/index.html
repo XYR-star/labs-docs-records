@@ -49,6 +49,8 @@
               <h1 id="page-title">概览</h1>
             </div>
             <div class="actions">
+              <button id="recording-button" class="recording-button">开始记录</button>
+              <span id="recording-status" class="recording-status">未开始记录</span>
               <button id="export-button">导出 JSON</button>
               <a class="button ghost" href="/api/export/inventory.csv">库存 CSV</a>
             </div>
@@ -63,6 +65,13 @@
             <div class="section-block">
               <h3>低库存 / 需关注</h3>
               <div id="low-stock-list" class="list compact"></div>
+            </div>
+            <div class="section-block">
+              <div class="panel-heading">
+                <h3>正式操作记录</h3>
+                <span id="recording-summary" class="muted-text">点击开始记录后启用</span>
+              </div>
+              <div id="recording-events-list" class="list compact"></div>
             </div>
           </section>
 
