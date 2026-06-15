@@ -51,7 +51,7 @@ function defaultChildForSlot(parentLocation, slotCode) {
       name: `抽屉 ${slotCode}`,
       kind: 'drawer',
       layout_type: 'grid',
-      rows: 1,
+      rows: 5,
       columns: 5,
       position_code: slotCode
     };
@@ -214,7 +214,7 @@ async function selectLocation(locationId) {
 
 function renderStorageGrid(view) {
   const grid = $('#storage-grid');
-  grid.className = 'box-grid';
+  grid.className = view.location?.kind === 'drawer' ? 'box-grid drawer-grid' : 'box-grid';
   grid.style.setProperty('--columns', view.columns);
   grid.innerHTML = view.slots.map((slot) => `
     <button class="slot-cell ${slot.state}" data-slot-code="${slot.code}">
@@ -292,16 +292,14 @@ async function showSlotDetail(slot) {
       <div class="empty-slot">
         <span class="slot-badge">${slot.code}</span>
         <h4>空孔位</h4>
-        <p>可在库存表单中选择当前盒子，并填入 ${slot.code} 存入样本。</p>
-        <button id="use-slot-button" class="ghost">填入库存表单</button>
+        <p>在当前盒子 ${slot.code} 直接录入细胞、样本或管子。</p>
+        <button id="use-slot-button" class="ghost">悬浮填入</button>
       </div>
     `;
     $('#use-slot-button').addEventListener('click', () => {
-      $('#inventory-location').value = state.selectedLocationId;
-      document.querySelector('#inventory-form [name="slot_code"]').value = slot.code;
-      document.querySelector('[data-tab="inventory"]').click();
-      document.querySelector('#inventory-form [name="name"]').focus();
+      openSlotInventoryDialog(slot);
     });
+    openSlotInventoryDialog(slot);
     return;
   }
 
@@ -395,11 +393,23 @@ function resetLocationForm() {
   $('#location-submit').textContent = '添加位置';
 }
 
+function openSlotInventoryDialog(slot) {
+  const location = state.locations.find((item) => item.id === state.selectedLocationId);
+  const form = $('#slot-inventory-form');
+  form.reset();
+  form.location_id.value = state.selectedLocationId;
+  form.slot_code.value = slot.code;
+  form.unit.value = 'tube';
+  $('#slot-inventory-context').textContent = `${location?.name || '当前盒子'} / ${slot.code}`;
+  $('#slot-inventory-dialog').showModal();
+  form.name.focus();
+}
+
 function bindForms() {
   $('#location-kind').addEventListener('change', (event) => {
     if (event.target.value === 'box' || event.target.value === 'freezer' || event.target.value === 'rack' || event.target.value === 'drawer') {
       $('#location-layout').value = 'grid';
-      document.querySelector('#location-form [name="rows"]').value = event.target.value === 'box' ? 9 : event.target.value === 'drawer' ? 1 : 4;
+      document.querySelector('#location-form [name="rows"]').value = event.target.value === 'box' ? 9 : event.target.value === 'drawer' ? 5 : 4;
       document.querySelector('#location-form [name="columns"]').value = event.target.value === 'box' ? 9 : event.target.value === 'drawer' ? 5 : 6;
     }
   });
@@ -416,6 +426,18 @@ function bindForms() {
     } catch (error) {
       $('#login-message').textContent = error.message;
     }
+  });
+
+  $('#slot-inventory-close').addEventListener('click', () => $('#slot-inventory-dialog').close());
+  $('#slot-inventory-cancel').addEventListener('click', () => $('#slot-inventory-dialog').close());
+  $('#slot-inventory-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await api('/api/inventory', {
+      method: 'POST',
+      body: JSON.stringify(formJson(event.currentTarget))
+    });
+    $('#slot-inventory-dialog').close();
+    await Promise.all([loadDashboard(), loadInventory(), selectLocation(state.selectedLocationId)]);
   });
 
   $('#entry-form').addEventListener('submit', async (event) => {

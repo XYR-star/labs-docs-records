@@ -225,6 +225,52 @@
         </main>
       </section>
     </div>
+    <dialog id="slot-inventory-dialog" class="modal">
+      <form id="slot-inventory-form" class="modal-panel">
+        <div class="panel-heading">
+          <div>
+            <h3>填入孔位</h3>
+            <p id="slot-inventory-context" class="muted-text"></p>
+          </div>
+          <button type="button" class="ghost icon-button" id="slot-inventory-close">×</button>
+        </div>
+        <div class="form-row">
+          <label>名称<input name="name" required placeholder="例如：293T stable cell line" /></label>
+          <label>类型
+            <select name="type">
+              <option value="sample">样本</option>
+              <option value="cell_line">细胞系</option>
+              <option value="plasmid">质粒</option>
+              <option value="reagent">试剂</option>
+              <option value="other">其他</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-row">
+          <label>编号<input name="identifier" placeholder="细胞编号、批号、冻存批次" /></label>
+          <label>数量<input name="quantity" type="number" step="0.01" value="1" /></label>
+          <label>单位<input name="unit" value="tube" /></label>
+        </div>
+        <div class="form-row">
+          <label>状态
+            <select name="status">
+              <option value="available">可用</option>
+              <option value="reserved">预留</option>
+              <option value="depleted">已用完</option>
+            </select>
+          </label>
+          <label>过期日期<input name="expires_on" type="date" /></label>
+          <label>标签<input name="tags" placeholder="cell, passage, clone" /></label>
+        </div>
+        <label>备注<textarea name="notes" rows="3" placeholder="冻存液、代次、来源、注意事项"></textarea></label>
+        <input name="location_id" type="hidden" />
+        <input name="slot_code" type="hidden" />
+        <div class="actions">
+          <button type="submit">保存到当前孔位</button>
+          <button type="button" class="ghost" id="slot-inventory-cancel">取消</button>
+        </div>
+      </form>
+    </dialog>
     <script src="/app.js" type="module"></script>
   </body>
 </html>

@@ -50,7 +50,7 @@ test('suggests contextual child locations for empty freezer and drawer slots', (
       name: '抽屉 C6',
       kind: 'drawer',
       layout_type: 'grid',
-      rows: 1,
+      rows: 5,
       columns: 5,
       position_code: 'C6'
     }

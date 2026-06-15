@@ -81,7 +81,7 @@ export function defaultChildLocationForSlot(parentLocation, slotCode) {
       name: `抽屉 ${code}`,
       kind: 'drawer',
       layout_type: 'grid',
-      rows: 1,
+      rows: 5,
       columns: 5,
       position_code: code
     };
