@@ -214,7 +214,12 @@ async function selectLocation(locationId) {
 
 function renderStorageGrid(view) {
   const grid = $('#storage-grid');
-  grid.className = view.location?.kind === 'drawer' ? 'box-grid drawer-grid' : 'box-grid';
+  if (view.location?.kind === 'drawer') {
+    renderDrawerGrid(view);
+    return;
+  }
+
+  grid.className = 'box-grid';
   grid.style.setProperty('--columns', view.columns);
   grid.innerHTML = view.slots.map((slot) => `
     <button class="slot-cell ${slot.state}" data-slot-code="${slot.code}">
@@ -225,6 +230,37 @@ function renderStorageGrid(view) {
   `).join('');
 
   $$('.slot-cell').forEach((button) => {
+    button.addEventListener('click', () => {
+      const slot = view.slots.find((item) => item.code === button.dataset.slotCode);
+      showSlotDetail(slot);
+    });
+  });
+}
+
+function renderDrawerGrid(view) {
+  const grid = $('#storage-grid');
+  grid.className = 'drawer-depth';
+  const rows = Array.from({ length: view.rows }, (_, index) => {
+    const row = index + 1;
+    const rowSlots = view.slots.filter((slot) => slot.row === row);
+    return `
+      <section class="drawer-shelf-row">
+        <div class="drawer-row-label">${rowSlots[0]?.rowLabel || row}</div>
+        <div class="drawer-row-track" style="--columns:${view.columns}">
+          ${rowSlots.map((slot) => `
+            <button class="drawer-box-spine ${slot.state}" data-slot-code="${slot.code}">
+              <span class="slot-code">${slot.code}</span>
+              <strong>${slot.child ? escapeHtml(slot.child.name) : ''}</strong>
+              <small>${slot.child ? escapeHtml(slot.child.kind) : '空'}</small>
+            </button>
+          `).join('')}
+        </div>
+      </section>
+    `;
+  });
+
+  grid.innerHTML = rows.join('');
+  $$('.drawer-box-spine').forEach((button) => {
     button.addEventListener('click', () => {
       const slot = view.slots.find((item) => item.code === button.dataset.slotCode);
       showSlotDetail(slot);
