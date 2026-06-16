@@ -177,7 +177,6 @@ function fillExperimentForm(experiment) {
   form.title.value = experiment.title || '';
   form.objective.value = experiment.objective || '';
   form.status.value = experiment.status || 'active';
-  form.tags.value = Array.isArray(experiment.tags) ? experiment.tags.join(', ') : '';
   $('#experiment-form-title').textContent = '编辑实验';
   $('#experiment-submit').textContent = '保存实验';
   $('#experiment-message').textContent = '';
