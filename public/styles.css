@@ -287,7 +287,7 @@ select[multiple] {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.85rem;
-  min-height: 74px;
+  min-height: 64px;
 }
 .experiment-card:hover,
 .experiment-card.active {
