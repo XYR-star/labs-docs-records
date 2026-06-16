@@ -49,6 +49,10 @@ button, .button {
 }
 
 button:hover, .button:hover { background: var(--accent-strong); }
+button:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
 .ghost {
   background: transparent;
   color: var(--accent-strong);

@@ -647,12 +647,25 @@ function bindForms() {
 
   $('#experiment-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    const created = await api('/api/experiments', { method: 'POST', body: JSON.stringify(formJson(event.currentTarget)) });
-    event.currentTarget.reset();
-    state.selectedExperimentId = created.id;
-    await Promise.all([loadDashboard(), loadRecording(), loadExperiments()]);
-    $('#entry-experiment').value = created.id;
-    await loadEntries();
+    const form = event.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
+    $('#experiment-message').textContent = '';
+    button.disabled = true;
+    button.textContent = '保存中';
+    try {
+      const created = await api('/api/experiments', { method: 'POST', body: JSON.stringify(formJson(form)) });
+      form.reset();
+      state.selectedExperimentId = created.id;
+      await Promise.all([loadDashboard(), loadRecording(), loadExperiments()]);
+      $('#entry-experiment').value = created.id;
+      await loadEntries();
+      $('#experiment-message').textContent = `已新建并切换到：${created.title}`;
+    } catch (error) {
+      $('#experiment-message').textContent = error.message;
+    } finally {
+      button.disabled = false;
+      button.textContent = '新建实验';
+    }
   });
 
   $('#entry-template').addEventListener('change', renderTemplateFields);
