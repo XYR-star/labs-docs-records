@@ -276,6 +276,9 @@ select[multiple] {
 .compact-heading {
   margin-bottom: 0;
 }
+.compact-heading h3 {
+  margin: 0;
+}
 .experiment-card {
   width: 100%;
   display: grid;
@@ -313,6 +316,10 @@ select[multiple] {
 }
 .sidebar-actions button {
   width: 100%;
+}
+.compact-form .actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
 }
 .template-fields {
   display: grid;

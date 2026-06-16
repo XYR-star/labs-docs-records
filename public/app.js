@@ -5,6 +5,7 @@ const state = {
   locations: [],
   inventory: [],
   selectedExperimentId: '',
+  editingExperimentId: '',
   selectedLocationId: null,
   selectedSlot: null,
   editingLocationId: null,
@@ -135,6 +136,8 @@ function renderExperiments() {
     button.addEventListener('click', async () => {
       state.selectedExperimentId = button.dataset.experimentId;
       $('#entry-experiment').value = state.selectedExperimentId;
+      const experiment = selectedExperiment();
+      if (experiment) fillExperimentForm(experiment);
       renderExperiments();
       renderSelectedExperimentSummary();
       await loadEntries($('#entry-search').value);
@@ -166,6 +169,26 @@ function renderSelectedExperimentSummary() {
         <p class="muted-text">从右侧实验列表选择一个实验，或先新建实验。</p>
       </div>
     `;
+}
+
+function fillExperimentForm(experiment) {
+  const form = $('#experiment-form');
+  state.editingExperimentId = experiment.id;
+  form.title.value = experiment.title || '';
+  form.objective.value = experiment.objective || '';
+  form.status.value = experiment.status || 'active';
+  form.tags.value = Array.isArray(experiment.tags) ? experiment.tags.join(', ') : '';
+  $('#experiment-form-title').textContent = '编辑实验';
+  $('#experiment-submit').textContent = '保存实验';
+  $('#experiment-message').textContent = '';
+}
+
+function resetExperimentForm() {
+  state.editingExperimentId = '';
+  $('#experiment-form').reset();
+  $('#experiment-form-title').textContent = '新建实验';
+  $('#experiment-submit').textContent = '新建实验';
+  $('#experiment-message').textContent = '';
 }
 
 async function loadRecording() {
@@ -679,24 +702,31 @@ function bindForms() {
     event.preventDefault();
     const form = event.currentTarget;
     const button = form.querySelector('button[type="submit"]');
+    const editingId = state.editingExperimentId;
     $('#experiment-message').textContent = '';
     button.disabled = true;
     button.textContent = '保存中';
     try {
-      const created = await api('/api/experiments', { method: 'POST', body: JSON.stringify(formJson(form)) });
-      form.reset();
-      state.selectedExperimentId = created.id;
+      const saved = await api(editingId ? `/api/experiments/${editingId}` : '/api/experiments', {
+        method: editingId ? 'PUT' : 'POST',
+        body: JSON.stringify(formJson(form))
+      });
+      state.selectedExperimentId = saved.id;
+      state.editingExperimentId = saved.id;
       await Promise.all([loadDashboard(), loadRecording(), loadExperiments()]);
-      $('#entry-experiment').value = created.id;
+      $('#entry-experiment').value = saved.id;
+      fillExperimentForm(saved);
       await loadEntries();
-      $('#experiment-message').textContent = `已新建并切换到：${created.title}`;
+      $('#experiment-message').textContent = editingId ? `已保存：${saved.title}` : `已新建并切换到：${saved.title}`;
     } catch (error) {
       $('#experiment-message').textContent = error.message;
     } finally {
       button.disabled = false;
-      button.textContent = '新建实验';
+      button.textContent = state.editingExperimentId ? '保存实验' : '新建实验';
     }
   });
+
+  $('#experiment-new').addEventListener('click', resetExperimentForm);
 
   $('#entry-template').addEventListener('change', renderTemplateFields);
   $('#entry-experiment').addEventListener('change', async (event) => {
@@ -784,6 +814,7 @@ function bindForms() {
     await api(`/api/experiments/${experiment.id}`, { method: 'DELETE' });
     state.selectedExperimentId = '';
     $('#entry-experiment').value = '';
+    resetExperimentForm();
     $('#experiment-message').textContent = `已删除：${experiment.title}`;
     await Promise.all([loadDashboard(), loadRecording(), loadExperiments(), loadEntries()]);
   });
