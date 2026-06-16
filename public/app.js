@@ -6,6 +6,7 @@ const state = {
   inventory: [],
   selectedExperimentId: '',
   editingExperimentId: '',
+  editingEntryId: '',
   selectedLocationId: null,
   selectedSlot: null,
   editingLocationId: null,
@@ -82,6 +83,13 @@ function escapeHtml(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
+}
+
+function toDateTimeLocal(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
 async function loadDashboard() {
@@ -233,23 +241,31 @@ async function loadEntries(q = '') {
   if (state.selectedExperimentId) params.set('experiment_id', state.selectedExperimentId);
   state.entries = await api(`/api/entries${params.toString() ? `?${params}` : ''}`);
   renderList('#entries-list', state.entries, (entry) => `
-    <article class="list-item">
+    <button class="list-item entry-card" data-entry-id="${entry.id}" type="button">
       <h3>${entry.title}</h3>
       <p>${entry.experiment_title || '未关联实验'} · ${new Date(entry.occurred_at).toLocaleString()} · ${entry.status}</p>
       ${entry.template_key && entry.template_key !== 'blank' ? `<p>${templateLabel(entry.template_key)} · ${templateDataSummary(entry.template_data)}</p>` : ''}
       ${linkedInventoryHtml(entry.linked_inventory)}
       <p>${entry.body.slice(0, 220)}</p>
       ${tagsHtml(entry.tags)}
-    </article>
+      <em>点击编辑</em>
+    </button>
   `);
   const select = $('#attachment-entry');
   select.innerHTML = '<option value="">不关联记录</option>' +
     state.entries.map((entry) => `<option value="${entry.id}">${entry.title}</option>`).join('');
   $$('.linked-inventory-chip').forEach((button) => {
-    button.addEventListener('click', async () => {
+    button.addEventListener('click', async (event) => {
+      event.stopPropagation();
       if (!button.dataset.locationId) return;
       document.querySelector('[data-tab="locations"]').click();
       await selectLocation(button.dataset.locationId);
+    });
+  });
+  $$('.entry-card').forEach((button) => {
+    button.addEventListener('click', () => {
+      const entry = state.entries.find((item) => item.id === button.dataset.entryId);
+      if (entry) fillEntryForm(entry);
     });
   });
 }
@@ -298,6 +314,41 @@ function renderTemplateFields() {
       </div>
     `
     : '<p class="muted-text">空白模板：直接填写正文即可。</p>';
+}
+
+function fillEntryForm(entry) {
+  const form = $('#entry-form');
+  state.editingEntryId = entry.id;
+  form.experiment_id.value = entry.experiment_id || '';
+  form.occurred_at.value = toDateTimeLocal(entry.occurred_at);
+  form.template_key.value = entry.template_key || 'blank';
+  renderTemplateFields();
+  form.title.value = entry.title || '';
+  form.status.value = entry.status || 'active';
+  form.tags.value = Array.isArray(entry.tags) ? entry.tags.join(', ') : '';
+  form.body.value = entry.body || '';
+
+  const templateData = entry.template_data || {};
+  Object.entries(templateData).forEach(([key, value]) => {
+    const input = form.querySelector(`[name="template_data.${CSS.escape(key)}"]`);
+    if (input) input.value = value;
+  });
+
+  const linkedIds = new Set((entry.linked_inventory || []).map((item) => String(item.id)));
+  [...$('#entry-inventory-links').options].forEach((option) => {
+    option.selected = linkedIds.has(option.value);
+  });
+  $('#entry-submit').textContent = '保存修改';
+}
+
+function resetEntryForm() {
+  const keepExperimentId = state.selectedExperimentId || '';
+  state.editingEntryId = '';
+  $('#entry-form').reset();
+  $('#entry-experiment').value = keepExperimentId;
+  $('#entry-template').value = 'blank';
+  renderTemplateFields();
+  $('#entry-submit').textContent = '保存记录';
 }
 
 async function loadEvents() {
@@ -739,11 +790,27 @@ function bindForms() {
     event.preventDefault();
     const data = formJson(event.currentTarget);
     state.selectedExperimentId = data.experiment_id || state.selectedExperimentId;
-    await api('/api/entries', { method: 'POST', body: JSON.stringify(data) });
-    event.currentTarget.reset();
+    const editingId = state.editingEntryId;
+    await api(editingId ? `/api/entries/${editingId}` : '/api/entries', {
+      method: editingId ? 'PUT' : 'POST',
+      body: JSON.stringify(data)
+    });
+    resetEntryForm();
     $('#entry-experiment').value = state.selectedExperimentId || '';
-    $('#entry-template').value = 'blank';
-    renderTemplateFields();
+    await Promise.all([loadDashboard(), loadRecording(), loadExperiments(), loadEntries()]);
+  });
+
+  $('#entry-new').addEventListener('click', resetEntryForm);
+
+  $('#entry-delete').addEventListener('click', async () => {
+    if (!state.editingEntryId) {
+      alert('请先从记录列表中点开一条记录。');
+      return;
+    }
+    const entry = state.entries.find((item) => item.id === state.editingEntryId);
+    if (!confirm(`删除记录「${entry?.title || ''}」？`)) return;
+    await api(`/api/entries/${state.editingEntryId}`, { method: 'DELETE' });
+    resetEntryForm();
     await Promise.all([loadDashboard(), loadRecording(), loadExperiments(), loadEntries()]);
   });
 

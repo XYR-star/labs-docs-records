@@ -228,6 +228,23 @@ select[multiple] {
   display: grid;
   gap: 0.35rem;
 }
+.entry-card {
+  width: 100%;
+  color: var(--ink);
+  text-align: left;
+  justify-content: stretch;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.entry-card:hover {
+  background: #f8fafb;
+}
+.entry-card em {
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 700;
+}
 .list-item h3 {
   margin: 0;
   font-size: 1rem;
@@ -320,6 +337,10 @@ select[multiple] {
 .compact-form .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
+}
+#entry-form .actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
 }
 .template-fields {
   display: grid;

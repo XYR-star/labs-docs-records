@@ -392,6 +392,18 @@ app.put('/api/entries/:id', requireAuth, async (req, res) => {
   res.json(result.rows[0]);
 });
 
+app.delete('/api/entries/:id', requireAuth, async (req, res) => {
+  const result = await pool.query('DELETE FROM experiment_entries WHERE id = $1 RETURNING id, title, experiment_id', [req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ error: 'Entry not found' });
+  await audit(pool, 'delete', 'experiment_entry', req.params.id, {
+    experiment_id: result.rows[0].experiment_id
+  });
+  await recordEvent(pool, 'entry.delete', 'experiment_entry', req.params.id, `删除实验记录：${result.rows[0].title}`, {
+    experiment_id: result.rows[0].experiment_id
+  });
+  res.status(204).end();
+});
+
 app.get('/api/events', requireAuth, async (_req, res) => {
   const result = await pool.query('SELECT * FROM events ORDER BY occurred_at DESC LIMIT 100');
   res.json(result.rows);
