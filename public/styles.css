@@ -339,9 +339,13 @@ select[multiple] {
   display: grid;
   grid-template-columns: 1fr 1fr;
 }
+.entry-form-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
 #entry-form .actions {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
 }
 .entry-media-tools {
   align-items: end;

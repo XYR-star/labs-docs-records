@@ -340,8 +340,6 @@ function fillEntryForm(entry) {
   form.template_key.value = entry.template_key || 'blank';
   renderTemplateFields();
   form.title.value = entry.title || '';
-  form.status.value = entry.status || 'active';
-  form.tags.value = Array.isArray(entry.tags) ? entry.tags.join(', ') : '';
   form.body.value = entry.body || '';
 
   const templateData = entry.template_data || {};
