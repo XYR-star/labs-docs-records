@@ -79,6 +79,7 @@
           <section class="tab-panel hidden" data-panel="entries">
             <div class="entries-workspace">
               <section class="entry-compose-panel">
+                <div id="selected-experiment-summary" class="section-block entry-context"></div>
                 <form id="entry-form" class="editor-form">
                   <div class="form-row">
                     <label>所属实验<select name="experiment_id" id="entry-experiment"></select></label>
@@ -110,7 +111,18 @@
                 <div id="entries-list" class="list"></div>
               </section>
               <aside class="experiments-panel">
+                <div class="toolbar">
+                  <input id="experiment-search" placeholder="搜索实验" />
+                  <button id="experiment-search-button" class="ghost">搜索</button>
+                </div>
+                <div id="experiments-list" class="list"></div>
+                <div class="sidebar-actions">
+                  <button type="button" class="ghost danger" id="experiment-delete">删除选中实验</button>
+                </div>
                 <form id="experiment-form" class="editor-form compact-form">
+                  <div class="panel-heading compact-heading">
+                    <h3>新建实验</h3>
+                  </div>
                   <label>实验名称<input name="title" required placeholder="例如：IL-2 mRNA 转染优化" /></label>
                   <label>目标/说明<textarea name="objective" rows="3" placeholder="实验目的、样本来源、总体设计"></textarea></label>
                   <div class="form-row compact-row">
@@ -126,11 +138,6 @@
                   <button type="submit">新建实验</button>
                   <p class="form-message" id="experiment-message"></p>
                 </form>
-                <div class="toolbar">
-                  <input id="experiment-search" placeholder="搜索实验" />
-                  <button id="experiment-search-button" class="ghost">搜索</button>
-                </div>
-                <div id="experiments-list" class="list"></div>
               </aside>
             </div>
           </section>

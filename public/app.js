@@ -108,10 +108,14 @@ async function loadTemplates() {
 
 async function loadExperiments(q = '') {
   state.experiments = await api(`/api/experiments${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+  if (state.selectedExperimentId && !state.experiments.some((experiment) => experiment.id === state.selectedExperimentId)) {
+    state.selectedExperimentId = '';
+  }
   const selectedValue = state.selectedExperimentId || $('#entry-experiment')?.value || '';
   $('#entry-experiment').innerHTML = '<option value="">不关联实验</option>' +
     state.experiments.map((experiment) => optionHtml(experiment.id, experiment.title, selectedValue)).join('');
   renderExperiments();
+  renderSelectedExperimentSummary();
 }
 
 function renderExperiments() {
@@ -133,9 +137,36 @@ function renderExperiments() {
       state.selectedExperimentId = button.dataset.experimentId;
       $('#entry-experiment').value = state.selectedExperimentId;
       renderExperiments();
+      renderSelectedExperimentSummary();
       await loadEntries($('#entry-search').value);
     });
   });
+}
+
+function selectedExperiment() {
+  return state.experiments.find((experiment) => experiment.id === state.selectedExperimentId);
+}
+
+function renderSelectedExperimentSummary() {
+  const node = $('#selected-experiment-summary');
+  if (!node) return;
+  const experiment = selectedExperiment();
+  node.innerHTML = experiment
+    ? `
+      <div>
+        <p class="eyebrow">当前实验</p>
+        <h3>${escapeHtml(experiment.title)}</h3>
+        <p class="muted-text">${escapeHtml(experiment.objective || '暂无目标说明')}</p>
+      </div>
+      <span class="pill">${escapeHtml(experiment.status)} · ${experiment.entry_count || 0} 条记录</span>
+    `
+    : `
+      <div>
+        <p class="eyebrow">当前实验</p>
+        <h3>未选择实验</h3>
+        <p class="muted-text">从右侧实验列表选择一个实验，或先新建实验。</p>
+      </div>
+    `;
 }
 
 async function loadRecording() {
@@ -672,6 +703,7 @@ function bindForms() {
   $('#entry-experiment').addEventListener('change', async (event) => {
     state.selectedExperimentId = event.target.value;
     renderExperiments();
+    renderSelectedExperimentSummary();
     await loadEntries($('#entry-search').value);
   });
 
@@ -737,6 +769,24 @@ function bindForms() {
     await api('/api/external-links', { method: 'POST', body: JSON.stringify(formJson(event.currentTarget)) });
     event.currentTarget.reset();
     $('#files-message').textContent = '外部云盘链接已保存。';
+  });
+
+  $('#experiment-delete').addEventListener('click', async () => {
+    const experiment = selectedExperiment();
+    if (!experiment) {
+      $('#experiment-message').textContent = '请先选择要删除的实验。';
+      return;
+    }
+    if (Number(experiment.entry_count || 0) > 0) {
+      $('#experiment-message').textContent = '这个实验已有记录，暂不允许直接删除。';
+      return;
+    }
+    if (!confirm(`删除实验「${experiment.title}」？`)) return;
+    await api(`/api/experiments/${experiment.id}`, { method: 'DELETE' });
+    state.selectedExperimentId = '';
+    $('#entry-experiment').value = '';
+    $('#experiment-message').textContent = `已删除：${experiment.title}`;
+    await Promise.all([loadDashboard(), loadRecording(), loadExperiments(), loadEntries()]);
   });
 }
 

@@ -232,6 +232,22 @@ app.put('/api/experiments/:id', requireAuth, async (req, res) => {
   res.json(result.rows[0]);
 });
 
+app.delete('/api/experiments/:id', requireAuth, async (req, res) => {
+  const entryCount = await pool.query(
+    'SELECT count(*)::int AS count FROM experiment_entries WHERE experiment_id = $1',
+    [req.params.id]
+  );
+  if (entryCount.rows[0].count > 0) {
+    return res.status(409).json({ error: 'Experiment has records. Delete or move its records first.' });
+  }
+
+  const result = await pool.query('DELETE FROM experiments WHERE id = $1 RETURNING id, title', [req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ error: 'Experiment not found' });
+  await audit(pool, 'delete', 'experiment', req.params.id);
+  await recordEvent(pool, 'experiment.delete', 'experiment', req.params.id, `删除实验：${result.rows[0].title}`);
+  res.status(204).end();
+});
+
 app.get('/api/entries', requireAuth, async (req, res) => {
   const q = String(req.query.q || '').trim();
   const experimentId = String(req.query.experiment_id || '').trim();

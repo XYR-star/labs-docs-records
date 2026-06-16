@@ -242,7 +242,7 @@ select[multiple] {
 }
 .entries-workspace {
   display: grid;
-  grid-template-columns: minmax(520px, 1.7fr) minmax(300px, 0.8fr);
+  grid-template-columns: minmax(560px, 1.7fr) minmax(320px, 0.78fr);
   gap: var(--gap);
   align-items: start;
 }
@@ -253,9 +253,28 @@ select[multiple] {
 .experiments-panel {
   position: sticky;
   top: 1rem;
+  display: grid;
+  gap: var(--gap);
 }
 .compact-form {
   margin-top: 0;
+}
+.entry-context {
+  margin-top: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap);
+  align-items: flex-start;
+}
+.entry-context h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.entry-context p {
+  margin: 0.2rem 0 0;
+}
+.compact-heading {
+  margin-bottom: 0;
 }
 .experiment-card {
   width: 100%;
@@ -287,6 +306,13 @@ select[multiple] {
   font-size: 0.78rem;
   font-style: normal;
   font-weight: 700;
+}
+.sidebar-actions {
+  display: flex;
+  justify-content: stretch;
+}
+.sidebar-actions button {
+  width: 100%;
 }
 .template-fields {
   display: grid;
