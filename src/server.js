@@ -21,6 +21,7 @@ import { normalizeInventoryQuantity, validateSlotCode } from './domain.js';
 import { buildStorageView } from './storage-view.js';
 import { createRecordingState } from './recording.js';
 import { getExperimentTemplates, normalizeTemplateData } from './experiment-templates.js';
+import { parseBeijingDateTimeInput } from './datetime.js';
 import { signSession, verifyPassword, verifySession } from './auth.js';
 import { createLoginRateLimiter } from './rate-limit.js';
 
@@ -361,7 +362,7 @@ app.post('/api/entries', requireAuth, async (req, res) => {
       String(req.body.status || 'active'),
       templateKey,
       templateData,
-      req.body.occurred_at || null,
+      parseBeijingDateTimeInput(req.body.occurred_at),
       cleanTags(req.body.tags)
     ]
   );
@@ -401,7 +402,7 @@ app.put('/api/entries/:id', requireAuth, async (req, res) => {
       String(req.body.status || 'active'),
       templateKey,
       templateData,
-      req.body.occurred_at || null,
+      parseBeijingDateTimeInput(req.body.occurred_at),
       cleanTags(req.body.tags)
     ]
   );

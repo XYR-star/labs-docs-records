@@ -1,4 +1,5 @@
 import { escapeHtml, imageMarkdown, renderEntryBody } from './entry-renderer.js';
+import { formatBeijingDate, formatBeijingDateTime, toBeijingDateTimeLocal } from './timezone.js';
 
 const state = {
   experiments: [],
@@ -78,13 +79,6 @@ function defaultChildForSlot(parentLocation, slotCode) {
   return null;
 }
 
-function toDateTimeLocal(value) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-}
-
 async function loadDashboard() {
   const data = await api('/api/dashboard');
   $('#metric-experiments').textContent = data.experiments;
@@ -123,7 +117,7 @@ async function loadExperiments(q = '') {
 function renderExperiments() {
   renderList('#experiments-list', state.experiments, (experiment) => {
     const active = experiment.id === state.selectedExperimentId ? ' active' : '';
-    const lastEntry = experiment.last_entry_at ? ` · 最近 ${new Date(experiment.last_entry_at).toLocaleDateString()}` : '';
+    const lastEntry = experiment.last_entry_at ? ` · 最近 ${formatBeijingDate(experiment.last_entry_at)}` : '';
     return `
       <button class="experiment-card${active}" data-experiment-id="${experiment.id}">
         <strong>${escapeHtml(experiment.title)}</strong>
@@ -203,7 +197,7 @@ function renderRecording() {
   const summary = $('#recording-summary');
 
   if (state.recording.enabled) {
-    const startedAt = new Date(state.recording.started_at).toLocaleString();
+    const startedAt = formatBeijingDateTime(state.recording.started_at);
     button.textContent = '记录中';
     button.disabled = true;
     button.classList.add('active');
@@ -221,7 +215,7 @@ function renderRecording() {
     <article class="list-item">
       <div>
         <h3>${escapeHtml(event.summary || event.action)}</h3>
-        <p>${escapeHtml(event.action)} · ${new Date(event.created_at).toLocaleString()}</p>
+        <p>${escapeHtml(event.action)} · ${formatBeijingDateTime(event.created_at)} 北京时间</p>
       </div>
       <span class="pill">${escapeHtml(event.entity_type)}</span>
     </article>
@@ -236,7 +230,7 @@ async function loadEntries(q = '') {
   renderList('#entries-list', state.entries, (entry) => `
     <article class="list-item entry-card" data-entry-id="${entry.id}" tabindex="0">
       <h3>${escapeHtml(entry.title)}</h3>
-      <p>${escapeHtml(entry.experiment_title || '未关联实验')} · ${new Date(entry.occurred_at).toLocaleString()} · ${escapeHtml(entry.status)}</p>
+      <p>${escapeHtml(entry.experiment_title || '未关联实验')} · ${formatBeijingDateTime(entry.occurred_at)} 北京时间 · ${escapeHtml(entry.status)}</p>
       ${entry.template_key && entry.template_key !== 'blank' ? `<p>${templateLabel(entry.template_key)} · ${templateDataSummary(entry.template_data)}</p>` : ''}
       ${linkedInventoryHtml(entry.linked_inventory)}
       <div class="entry-body-preview">${renderEntryBody(entry.body)}</div>
@@ -342,7 +336,7 @@ function fillEntryForm(entry) {
   const form = $('#entry-form');
   state.editingEntryId = entry.id;
   form.experiment_id.value = entry.experiment_id || '';
-  form.occurred_at.value = toDateTimeLocal(entry.occurred_at);
+  form.occurred_at.value = toBeijingDateTimeLocal(entry.occurred_at);
   form.template_key.value = entry.template_key || 'blank';
   renderTemplateFields();
   form.title.value = entry.title || '';
@@ -421,7 +415,7 @@ async function loadEvents() {
   renderList('#events-list', events, (event) => `
     <article class="list-item">
       <h3>${event.title}</h3>
-      <p>${event.kind} · ${new Date(event.occurred_at).toLocaleString()}</p>
+      <p>${event.kind} · ${formatBeijingDateTime(event.occurred_at)} 北京时间</p>
       <p>${event.body}</p>
     </article>
   `);
@@ -451,7 +445,7 @@ async function loadInventory(q = '') {
     <article class="list-item">
       <h3>${item.name}</h3>
       <p>${item.type} · ${item.identifier || '无编号'} · ${item.quantity} ${item.unit || ''}</p>
-      <p>${item.location_name || '未指定位置'}${item.slot_code ? ` / ${item.slot_code}` : ''} · ${item.status}${item.stored_on ? ` · 存放 ${new Date(item.stored_on).toLocaleDateString()}` : ''}</p>
+      <p>${item.location_name || '未指定位置'}${item.slot_code ? ` / ${item.slot_code}` : ''} · ${item.status}${item.stored_on ? ` · 存放 ${formatBeijingDate(item.stored_on)}` : ''}</p>
       ${tagsHtml(item.tags)}
     </article>
   `);
@@ -668,7 +662,7 @@ async function showSlotDetail(slot) {
       <span class="slot-badge">${slot.code}</span>
       <h4>${escapeHtml(slot.item.name)}</h4>
       <p>${escapeHtml(slot.item.type)} · ${escapeHtml(slot.item.identifier || '无编号')}</p>
-      <p>${slot.item.quantity} ${escapeHtml(slot.item.unit || '')} · ${escapeHtml(slot.item.status)}${slot.item.stored_on ? ` · 存放 ${new Date(slot.item.stored_on).toLocaleDateString()}` : ''}</p>
+      <p>${slot.item.quantity} ${escapeHtml(slot.item.unit || '')} · ${escapeHtml(slot.item.status)}${slot.item.stored_on ? ` · 存放 ${formatBeijingDate(slot.item.stored_on)}` : ''}</p>
     </div>
     <div class="movement-list">
       <form id="slot-adjust-form" class="mini-form">
@@ -688,7 +682,7 @@ async function showSlotDetail(slot) {
       ${movements.map((movement) => `
         <article>
           <strong>${escapeHtml(movement.action)}</strong>
-          <p>${new Date(movement.created_at).toLocaleString()}</p>
+          <p>${formatBeijingDateTime(movement.created_at)} 北京时间</p>
           <p>${escapeHtml(movement.from_location_name || '')}${movement.from_slot_code ? ` / ${movement.from_slot_code}` : ''} → ${escapeHtml(movement.to_location_name || '')}${movement.to_slot_code ? ` / ${movement.to_slot_code}` : ''}</p>
           ${movement.note ? `<p>${escapeHtml(movement.note)}</p>` : ''}
         </article>
