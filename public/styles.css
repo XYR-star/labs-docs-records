@@ -235,6 +235,7 @@ select[multiple] {
   justify-content: stretch;
   background: var(--panel);
   border: 1px solid var(--line);
+  cursor: pointer;
 }
 .entry-card:hover {
   background: #f8fafb;
@@ -341,6 +342,69 @@ select[multiple] {
 #entry-form .actions {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
+}
+.entry-media-tools {
+  align-items: end;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(160px, 0.8fr);
+  padding: 0.85rem;
+}
+.entry-media-tools input[type="file"] {
+  background: #f8fafb;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  padding: 0.65rem;
+  width: 100%;
+}
+.entry-body-preview {
+  color: var(--muted);
+  display: grid;
+  gap: 0.55rem;
+}
+.entry-body-preview p {
+  margin: 0;
+}
+.entry-image {
+  margin: 0;
+}
+.entry-image img,
+.attachment-strip img {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: block;
+  max-height: 260px;
+  max-width: 100%;
+  object-fit: contain;
+}
+.entry-image figcaption {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-top: 0.35rem;
+}
+.attachment-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+.attachment-strip a {
+  align-items: center;
+  background: #f8fafb;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--accent-strong);
+  display: inline-flex;
+  font-size: 0.82rem;
+  gap: 0.45rem;
+  padding: 0.45rem 0.55rem;
+  text-decoration: none;
+}
+.attachment-strip img {
+  height: 42px;
+  width: 56px;
 }
 .template-fields {
   display: grid;
@@ -707,6 +771,9 @@ select[multiple] {
     justify-content: flex-start;
   }
   .metric-grid, .form-row, .entries-workspace, .template-grid { grid-template-columns: 1fr; }
+  .entry-media-tools {
+    grid-template-columns: 1fr;
+  }
   .experiments-panel {
     position: static;
   }

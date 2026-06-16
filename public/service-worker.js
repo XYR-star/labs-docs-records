@@ -1,5 +1,5 @@
-const CACHE_NAME = 'labs-eln-v2';
-const ASSETS = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest'];
+const CACHE_NAME = 'labs-eln-v3';
+const ASSETS = ['/', '/index.html', '/styles.css', '/app.js', '/entry-renderer.js', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

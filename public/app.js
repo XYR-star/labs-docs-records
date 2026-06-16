@@ -1,3 +1,5 @@
+import { escapeHtml, imageMarkdown, renderEntryBody } from './entry-renderer.js';
+
 const state = {
   experiments: [],
   entries: [],
@@ -74,15 +76,6 @@ function defaultChildForSlot(parentLocation, slotCode) {
     };
   }
   return null;
-}
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
 }
 
 function toDateTimeLocal(value) {
@@ -241,15 +234,16 @@ async function loadEntries(q = '') {
   if (state.selectedExperimentId) params.set('experiment_id', state.selectedExperimentId);
   state.entries = await api(`/api/entries${params.toString() ? `?${params}` : ''}`);
   renderList('#entries-list', state.entries, (entry) => `
-    <button class="list-item entry-card" data-entry-id="${entry.id}" type="button">
-      <h3>${entry.title}</h3>
-      <p>${entry.experiment_title || '未关联实验'} · ${new Date(entry.occurred_at).toLocaleString()} · ${entry.status}</p>
+    <article class="list-item entry-card" data-entry-id="${entry.id}" tabindex="0">
+      <h3>${escapeHtml(entry.title)}</h3>
+      <p>${escapeHtml(entry.experiment_title || '未关联实验')} · ${new Date(entry.occurred_at).toLocaleString()} · ${escapeHtml(entry.status)}</p>
       ${entry.template_key && entry.template_key !== 'blank' ? `<p>${templateLabel(entry.template_key)} · ${templateDataSummary(entry.template_data)}</p>` : ''}
       ${linkedInventoryHtml(entry.linked_inventory)}
-      <p>${entry.body.slice(0, 220)}</p>
+      <div class="entry-body-preview">${renderEntryBody(entry.body)}</div>
+      ${entryAttachmentsHtml(entry.attachments)}
       ${tagsHtml(entry.tags)}
       <em>点击编辑</em>
-    </button>
+    </article>
   `);
   const select = $('#attachment-entry');
   select.innerHTML = '<option value="">不关联记录</option>' +
@@ -267,6 +261,17 @@ async function loadEntries(q = '') {
       const entry = state.entries.find((item) => item.id === button.dataset.entryId);
       if (entry) fillEntryForm(entry);
     });
+    button.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      const entry = state.entries.find((item) => item.id === button.dataset.entryId);
+      if (entry) fillEntryForm(entry);
+    });
+  });
+  $$('.attachment-strip a').forEach((link) => {
+    link.addEventListener('click', (event) => {
+      event.stopPropagation();
+    });
   });
 }
 
@@ -280,6 +285,23 @@ function linkedInventoryHtml(items = []) {
           <span>${escapeHtml(item.location_name || '未指定位置')}${item.slot_code ? ` / ${escapeHtml(item.slot_code)}` : ''}</span>
         </button>
       `).join('')}
+    </div>
+  `;
+}
+
+function entryAttachmentsHtml(items = []) {
+  if (!items.length) return '';
+  return `
+    <div class="attachment-strip">
+      ${items.map((item) => {
+        const isImage = String(item.mime_type || '').startsWith('image/');
+        return `
+          <a href="${escapeHtml(item.url || `/api/attachments/${item.id}/file`)}" target="_blank" rel="noopener">
+            ${isImage ? `<img src="${escapeHtml(item.url || `/api/attachments/${item.id}/file`)}" alt="${escapeHtml(item.original_name)}" loading="lazy" />` : ''}
+            <span>${escapeHtml(item.original_name)}</span>
+          </a>
+        `;
+      }).join('')}
     </div>
   `;
 }
@@ -349,6 +371,49 @@ function resetEntryForm() {
   $('#entry-template').value = 'blank';
   renderTemplateFields();
   $('#entry-submit').textContent = '保存记录';
+  $('#entry-image-file').value = '';
+  $('#entry-media-message').textContent = '';
+}
+
+async function saveEntryFromForm(form) {
+  const data = formJson(form);
+  state.selectedExperimentId = data.experiment_id || state.selectedExperimentId;
+  const editingId = state.editingEntryId;
+  const saved = await api(editingId ? `/api/entries/${editingId}` : '/api/entries', {
+    method: editingId ? 'PUT' : 'POST',
+    body: JSON.stringify(data)
+  });
+  state.editingEntryId = saved.id;
+  return saved;
+}
+
+async function insertEntryImages() {
+  const form = $('#entry-form');
+  const input = $('#entry-image-file');
+  const files = [...input.files].filter((file) => file.type.startsWith('image/'));
+  if (!files.length) {
+    $('#entry-media-message').textContent = '请选择图片文件。';
+    return;
+  }
+
+  $('#entry-media-message').textContent = '保存记录并上传图片中...';
+  const saved = await saveEntryFromForm(form);
+  const uploads = [];
+  for (const file of files) {
+    const body = new FormData();
+    body.append('entry_id', saved.id);
+    body.append('file', file);
+    uploads.push(await api('/api/attachments', { method: 'POST', body }));
+  }
+
+  const currentBody = form.body.value.trimEnd();
+  form.body.value = `${currentBody}${currentBody ? '\n\n' : ''}${uploads.map(imageMarkdown).join('\n')}`;
+  await saveEntryFromForm(form);
+  input.value = '';
+  $('#entry-media-message').textContent = `已插入 ${uploads.length} 张图片。`;
+  await Promise.all([loadDashboard(), loadRecording(), loadExperiments(), loadEntries()]);
+  const refreshed = state.entries.find((entry) => entry.id === state.editingEntryId);
+  if (refreshed) fillEntryForm(refreshed);
 }
 
 async function loadEvents() {
@@ -788,16 +853,18 @@ function bindForms() {
 
   $('#entry-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    const data = formJson(event.currentTarget);
-    state.selectedExperimentId = data.experiment_id || state.selectedExperimentId;
-    const editingId = state.editingEntryId;
-    await api(editingId ? `/api/entries/${editingId}` : '/api/entries', {
-      method: editingId ? 'PUT' : 'POST',
-      body: JSON.stringify(data)
-    });
+    await saveEntryFromForm(event.currentTarget);
     resetEntryForm();
     $('#entry-experiment').value = state.selectedExperimentId || '';
     await Promise.all([loadDashboard(), loadRecording(), loadExperiments(), loadEntries()]);
+  });
+
+  $('#entry-insert-image').addEventListener('click', async () => {
+    try {
+      await insertEntryImages();
+    } catch (error) {
+      $('#entry-media-message').textContent = error.message;
+    }
   });
 
   $('#entry-new').addEventListener('click', resetEntryForm);

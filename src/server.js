@@ -65,6 +65,14 @@ function cleanUuidList(values) {
   return [...new Set(list.map((value) => String(value).trim()).filter(Boolean))].slice(0, 50);
 }
 
+function attachmentUrl(id) {
+  return `/api/attachments/${id}/file`;
+}
+
+function withAttachmentUrl(row) {
+  return { ...row, url: attachmentUrl(row.id) };
+}
+
 function getClientKey(req) {
   return (
     req.headers['cf-connecting-ip'] ||
@@ -255,7 +263,7 @@ app.get('/api/entries', requireAuth, async (req, res) => {
     ? await pool.query(
         `SELECT en.*, e.title AS experiment_title
          , COALESCE(
-           jsonb_agg(
+           jsonb_agg(DISTINCT
              jsonb_build_object(
                'id', i.id,
                'name', i.name,
@@ -270,11 +278,24 @@ app.get('/api/entries', requireAuth, async (req, res) => {
            ) FILTER (WHERE i.id IS NOT NULL),
            '[]'::jsonb
          ) AS linked_inventory
+         , COALESCE(
+           jsonb_agg(DISTINCT
+             jsonb_build_object(
+               'id', a.id,
+               'original_name', a.original_name,
+               'mime_type', a.mime_type,
+               'size_bytes', a.size_bytes,
+               'url', '/api/attachments/' || a.id || '/file'
+             )
+           ) FILTER (WHERE a.id IS NOT NULL),
+           '[]'::jsonb
+         ) AS attachments
          FROM experiment_entries en
          LEFT JOIN experiments e ON e.id = en.experiment_id
          LEFT JOIN entry_inventory_links eil ON eil.entry_id = en.id
          LEFT JOIN inventory_items i ON i.id = eil.item_id
          LEFT JOIN storage_locations l ON l.id = i.location_id
+         LEFT JOIN attachments a ON a.entry_id = en.id
          WHERE to_tsvector('simple', en.title || ' ' || en.body) @@ plainto_tsquery('simple', $1)
            AND ($2::uuid IS NULL OR en.experiment_id = $2::uuid)
          GROUP BY en.id, e.title
@@ -284,7 +305,7 @@ app.get('/api/entries', requireAuth, async (req, res) => {
     : await pool.query(
         `SELECT en.*, e.title AS experiment_title
          , COALESCE(
-           jsonb_agg(
+           jsonb_agg(DISTINCT
              jsonb_build_object(
                'id', i.id,
                'name', i.name,
@@ -299,11 +320,24 @@ app.get('/api/entries', requireAuth, async (req, res) => {
            ) FILTER (WHERE i.id IS NOT NULL),
            '[]'::jsonb
          ) AS linked_inventory
+         , COALESCE(
+           jsonb_agg(DISTINCT
+             jsonb_build_object(
+               'id', a.id,
+               'original_name', a.original_name,
+               'mime_type', a.mime_type,
+               'size_bytes', a.size_bytes,
+               'url', '/api/attachments/' || a.id || '/file'
+             )
+           ) FILTER (WHERE a.id IS NOT NULL),
+           '[]'::jsonb
+         ) AS attachments
          FROM experiment_entries en
          LEFT JOIN experiments e ON e.id = en.experiment_id
          LEFT JOIN entry_inventory_links eil ON eil.entry_id = en.id
          LEFT JOIN inventory_items i ON i.id = eil.item_id
          LEFT JOIN storage_locations l ON l.id = i.location_id
+         LEFT JOIN attachments a ON a.entry_id = en.id
          WHERE ($1::uuid IS NULL OR en.experiment_id = $1::uuid)
          GROUP BY en.id, e.title
          ORDER BY en.occurred_at DESC LIMIT 100`,
@@ -816,7 +850,15 @@ app.post('/api/attachments', requireAuth, upload.single('file'), async (req, res
     item_id: result.rows[0].item_id,
     size_bytes: result.rows[0].size_bytes
   });
-  res.status(201).json(result.rows[0]);
+  res.status(201).json(withAttachmentUrl(result.rows[0]));
+});
+
+app.get('/api/attachments/:id/file', requireAuth, async (req, res) => {
+  const result = await pool.query('SELECT * FROM attachments WHERE id = $1', [req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ error: 'Attachment not found' });
+  const attachment = result.rows[0];
+  res.type(attachment.mime_type || 'application/octet-stream');
+  res.sendFile(path.resolve(attachment.storage_path));
 });
 
 app.post('/api/external-links', requireAuth, async (req, res) => {
